@@ -1,0 +1,2728 @@
+---
+pagetitle: "Reliability and Validity"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+    css: app_data_manuscript/styles.css
+    logo: C:\Users\s5165380\OneDrive - Griffith University\FD reliability\images\FD_logo.png
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r eval=FALSE, include=FALSE}
+setwd(dirname(rstudioapi::getSourceEditorContext()[['path']]))
+
+```
+
+```{r PREPARE WORKSPACE, include=FALSE}
+library(flexdashboard)
+library(knitr)
+library(patchwork)
+library(data.table)
+library(scales)
+library(plotly)
+library(gt)
+library(gtExtras)
+library(readxl)
+library(tidyverse)
+
+source('rmba.R')
+
+knitr::opts_chunk$set(dpi=68)
+
+title.size = 10
+text.size = 9
+
+# Participant information
+participant.info <- read_xlsx('FD reliability recruitment/participantData.xlsx') %>% 
+  janitor::clean_names()
+
+participant.table <- participant.info %>% 
+  select(id, age, height, weight, time_between) %>% 
+  pivot_longer(c(age, height, weight, time_between)) %>% 
+  group_by(name) %>% 
+  summarise(mean = mean(value),
+            sd = sd(value),
+            range = paste(round(range(value),1), collapse = '-')) %>% 
+  mutate(name = factor(name, levels = c("age", "weight", "height", "time_between"))) %>% 
+  arrange(name) %>% 
+  mutate(name = str_replace_all(name, c('age' = 'Age (years)', 'weight' = 'Weight (kg)','height' = 'Height (cm)', 'time_between' = 'Days between tests'))) %>% 
+  rename(c('Mean' = 'mean'), 'SD' = 'sd', 'Range' = 'range')
+
+# LOAD EXCISTING DATA FILES
+if(file.exists('app_data_manuscript/reliability_validity.RDS')){reliability_validity <- readRDS('app_data_manuscript/reliability_validity.RDS')}
+if(file.exists('app_data_manuscript/discrete_data.RDS')){discrete.data <- readRDS('app_data_manuscript/discrete_data.RDS')}
+if(file.exists('app_data_manuscript/GRF_data.RDS')){GRF.data <- readRDS('app_data_manuscript/GRF_data.RDS')}
+if(file.exists('app_data_manuscript/data_metrics.RDS')){data.metrics<- readRDS('app_data_manuscript/data_metrics.RDS')}
+if(file.exists('app_data_manuscript/data_phases.RDS')){data.phases<- readRDS('app_data_manuscript/data_phases.RDS')}
+
+metric.list <- read_xlsx('app_data_manuscript/metric_list.xlsx') %>% filter(include_in_manuscript)
+
+col.gradient <- paletteer::paletteer_c("grDevices::ag_GrnYl", 4)
+cols <- c('FD' = '#FF7A00', 'AMTI' = col.gradient[1], 
+          'ForceDecks' = '#FF7A00', 'Laboratory' = col.gradient[1],
+          'day1' = 'steelblue', 'day2' = 'firebrick3', 
+          'TRUE' = 'forestgreen', 'FALSE' = 'firebrick3')
+
+# Height of table rows
+table.height <- reliability_validity %>% 
+  count(test_type) %>% 
+  mutate(height = 5.5 + (n-10)/3) %>% 
+  select(-n) %>% 
+  deframe()
+
+# Order of tasks according to HTML report menu
+task.order <- c('Countermovement Jump', 'Squat Jump', 'Drop Jump', 'Hop Test', 'Single Leg Hop Test', 'Isometric Mid-Thigh Pull',
+                'Shoulder ISO-I', 'Shoulder ISO-T', 'Shoulder ISO-Y', 'Squat Assessment', 'Quiet Stand', 'Single Leg Range of Stability')
+
+```
+
+```{r LOAD METRIC DATA, eval=FALSE, include=FALSE}
+
+remove.invalid.metrics <- c(
+  'Keema Lucassen Countermovement Jump day2 Trial 1 Peak Landing Velocity [m/s]'
+)
+
+data.metrics.FD <- read_xlsx('data/FD_metrics.xlsx', skip = 5, guess_max = 21474836) %>% 
+select(-`Body Weight [kg]`) %>% 
+  separate(Trial, into = c('trial', 'rep'), sep = ' ') %>% 
+  group_by(Athlete, `Athlete Id`, `Test Type`, `Test Date`, trial) %>% 
+  mutate(rep = 1:length(rep)) %>% ungroup() %>% 
+  pivot_longer(-c(Athlete, `Athlete Id`, `Test Type`, `Test Date`, trial, rep), names_to = 'metric') %>% 
+  filter(`Test Date` > as.POSIXct("2023-06-11")) %>% # REMOVE TRIALS FROM PREVIOUS TESTING
+  mutate(metric = str_remove(metric, "\\.*\\d+$")) %>% # REMOVE TRAILING NUMBERS DUE TO DUPLICATE VARIABLES
+  janitor::clean_names() %>% 
+  mutate(device = 'FD',
+         date = lubridate::as_date(test_date),
+         time = format(test_date, format = "%H:%M:%S"),
+         .before = 4) %>% 
+  group_by(athlete) %>% mutate(day = ifelse(date == min(date),'day1','day2'), .before = 5) %>% ungroup() %>% select(-c(athlete_id, test_date, date))
+
+data.metrics.AMTI <- read_xlsx('data/AMTI_updated_metrics.xlsx', skip = 5, guess_max = 21474836) %>% 
+  select(-`Body Weight [kg]`) %>% 
+  separate(Trial, into = c('trial', 'rep'), sep = ' ') %>% 
+  group_by(Athlete, `Athlete Id`, `Test Type`, `Test Date`, trial) %>% 
+  mutate(rep = 1:length(rep)) %>% ungroup() %>% 
+  pivot_longer(-c(Athlete, `Athlete Id`, `Test Type`, `Test Date`, trial, rep), names_to = 'metric') %>% 
+  filter(`Test Date` > as.POSIXct("2023-06-11")) %>% # REMOVE TRIALS FROM PREVIOUS TESTING
+  filter(`Test Date` < as.POSIXct("2023-09-01")) %>% # REMOVE TRIALS AFTER TESTING
+  mutate(metric = str_remove(metric, "\\.*\\d+$")) %>% # REMOVE TRAILING NUMBERS DUE TO DUPLICATE VARIABLES
+  janitor::clean_names() %>% 
+  mutate(device = 'AMTI',
+         date = lubridate::as_date(test_date),
+         time = format(test_date, format = "%H:%M:%S"),
+         .before = 4) %>% 
+  group_by(athlete) %>% mutate(day = ifelse(date == min(date),'day1','day2'), .before = 5) %>% ungroup() %>% select(-c(athlete_id, test_date, date))
+
+data.all <- bind_rows(data.metrics.FD, data.metrics.AMTI) %>% 
+  filter(!is.na(value)) %>% 
+  filter(!duplicated(paste(athlete, test_type, device, day, trial, rep, metric))) %>% 
+  filter(!(paste(athlete, test_type, day, trial, rep) %in% remove.invalid.metrics)) %>%  # REMOVE INVALID TRIALS
+  group_by(test_type, device, metric) %>%   # REMOVE WEIRD METRICS THAT ONLY A FEW PARTICIPANTS HAVE
+  filter(length(unique(athlete)) > 2) %>% 
+  ungroup() %>% 
+  filter(!(metric == 'Countermovement Depth [cm]' & test_type == 'Squat Jump'), # REMOVE METRICS THAT SHOULDN'T EXIST
+         !(metric == 'CMJ Left-Limb Stiffness [N/m]' & test_type == 'Squat Jump'),
+         !(metric == 'CMJ Right-Limb Stiffness [N/m]' & test_type == 'Squat Jump'),
+         !(metric == 'CMJ Stiffness Asymmetry [% L,R]' & test_type == 'Squat Jump'),
+         !(metric == 'Eccentric Duration [ms]' & test_type == 'Squat Jump')) 
+
+data.metrics <- data.all %>% 
+  filter((metric %in% metric.list$metric) & !(paste(test_type, metric) %in% paste(metric.list$exclude_task, metric.list$metric)))
+
+saveRDS(data.metrics, 'app_data_manuscript/data_metrics.RDS')
+
+# Phase only information for continuous analysis
+data.phase <- data.all
+saveRDS(data.phase, 'app_data_manuscript/data_phase.RDS')
+
+```
+
+```{r CALCULATE RELIABILITY & VALIDITY, eval=FALSE, include=FALSE}
+
+## ICC & MDC
+data.nested <- data.metrics %>%
+  select(-time) %>% 
+  group_by(device, test_type, trial, day, metric, athlete) %>% 
+  summarise(
+    n_trial = length(value),
+    participant_mean = mean(value, na.rm = T)) %>% 
+  filter(n_trial >= 2) %>% # REMOVE PARTICIPANTS WITH LESS THAN 2 TRIALS
+  select(-n_trial) %>% 
+  pivot_wider(names_from = day, values_from = participant_mean) %>% 
+  group_nest()
+
+i = 1
+reliabilty.ICC.MDC = tibble()
+for(i in 1:nrow(data.nested)){
+  
+  paste(data.nested$device[[i]], data.nested$test_type[[i]], data.nested$metric[[i]], sep =' | ')
+  
+  data = data.nested$data[[i]]
+  
+  n_sample = nrow(na.omit(data))
+  
+  mean_day1 = mean(data$day1, na.rm = T)
+  mean_day2 = mean(data$day2, na.rm = T)
+  SD_day1 = sd(data$day1, na.rm = T)
+  SD_day2 = sd(data$day2, na.rm = T)
+  
+  ICC.data = psych::ICC(select(data, day1, day2))
+  ICC.df = as_tibble(ICC.data$results) %>% filter(type == 'ICC2k')
+  ICC = ICC.df$ICC[1]
+  ICC_lower = ICC.df$`lower bound`
+  ICC_upper = ICC.df$`upper bound`
+  
+  total_SD = pivot_longer(data, -athlete) %>% pull(value) %>% sd(na.rm=T)
+  SEM = total_SD * sqrt(1-ICC)
+  MDC = 1.96*sqrt(2)*SEM
+  
+  add.data <- data.nested %>% 
+    slice(i) %>% 
+    select(-data) %>% 
+    mutate(n_sample, mean_day1, mean_day2, SD_day1, SD_day2, ICC, ICC_lower, ICC_upper, SEM, MDC)
+  
+  reliabilty.ICC.MDC <- bind_rows(reliabilty.ICC.MDC, add.data)
+}
+
+reliabilty <- reliabilty.ICC.MDC %>%
+  group_by(device, test_type, metric) %>% 
+  summarise(across(where(is.numeric), ~mean(.)), .groups = 'drop') %>% # CALCULATE MEAN OF LEFT AND RIGHT LEG FOR UNILATERAL TASKS
+  filter(n_sample > 8) %>%  # REMOVE METRICS WITH LESS THAN 8 PARTICIPANTS 
+  mutate(ICC_group = cut(ICC, c(-Inf, 0.5, 0.75, 0.9, 1), 
+                         c("Poor", "Moderate", "Good", "Excellent")) %>% 
+           factor(levels = c("Poor", "Moderate", "Good", "Excellent"))) %>% 
+    pivot_wider(names_from = device, values_from = -c(device, test_type, metric)) %>%
+  filter((metric %in% metric.list$metric) & !(paste(test_type, metric) %in% paste(metric.list$exclude_task, metric.list$metric)))
+
+
+## Validity Percent Difference
+if(F){
+check <- data.metrics %>%
+  filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+  select(-time) %>% 
+  pivot_wider(names_from = device) %>% 
+  filter(is.na(FD) | is.na(AMTI)) %>% 
+  filter(!duplicated(paste(athlete, test_type, day, trial, rep))) %>% 
+  arrange(athlete, test_type, day, rep)
+
+outliers <- data.metrics %>% 
+  group_by(test_type, metric) %>% 
+  rstatix::identify_outliers(value)
+}
+
+validity <- data.metrics %>%
+  filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+  select(-time) %>% 
+  pivot_wider(names_from = device) %>% 
+  na.omit() %>%  # REMOVE IF ONE DEVICE IS MISSING
+  ungroup() %>% 
+  mutate(diff = FD-AMTI,
+         percent_change = abs(FD-AMTI)/AMTI*100) %>% 
+  mutate(percent_change = if_else(percent_change == Inf | diff == 0, 0, percent_change)) %>% 
+  group_by(test_type, metric, athlete) %>% 
+  summarise(
+    n_trials = length(FD),
+    participant_mean_FD = mean(FD),
+    participant_mean_AMTI = mean(AMTI),
+    participant_diff = mean(diff, na.rm = T),
+    participant_percent_change = mean(percent_change, na.rm = T)) %>% 
+  summarise(
+    mean_FD = mean(participant_mean_FD, na.rm = T),
+    mean_AMTI = mean(participant_mean_AMTI, na.rm = T),
+    SD_FD = sd(participant_mean_FD, na.rm = T),
+    SD_AMTI = sd(participant_mean_AMTI, na.rm = T),
+    Diff = mean(participant_diff, na.rm = T),
+    PDiff = mean(participant_percent_change, na.rm = T)) %>%  ungroup() %>% 
+  mutate(PDiff_group = cut(PDiff, c(-Inf, -20, -10, -5, 5, 10, 20, Inf), 
+                           c("Poor", "Good", "Moderate", "Excellent", "Good", "Moderate", "Poor")) %>%  
+           factor(levels = c("Excellent", "Good", "Moderate", "Poor")))
+ 
+# Combine and save
+reliability_validity = left_join(reliabilty, validity)
+
+saveRDS(reliability_validity, 'app_data_manuscript/reliability_validity.RDS')
+
+```
+
+```{r PROCESS CONTINUOUS DATA, eval=FALSE, include=FALSE}
+
+# Setup ----
+normalise <- function(df, index.col = 'Time', data.col = c('Left', 'Right'), nDataPoints = 101) {
+  index = df[[index.col]]
+  df.normalised <- tibble('time_normalised' = 1:nDataPoints)
+  
+  # Keep original time
+  data.col <- c('Time', data.col)
+  
+  # Loop through columns specified
+  for(col in data.col){
+    #print(col)
+    interp <- approx(index, df[[col]], seq(from=min(index), to=max(index), by=(max(index)-min(index))/(nDataPoints-1)))
+    df.normalised[[col]] <- interp$y
+  }
+  
+  return(df.normalised)
+}
+
+# Invalid trials | force plate anomalies | extreme outliers
+remove.invalid <- c(
+  'Alec McKenzie Single Leg Range of Stability day1 right 2',
+  'Alec McKenzie Quiet Stand day2 left 2',
+  'Alec McKenzie Quiet Stand day2 right 2',
+  'Alec McKenzie Quiet Stand day2 left 3',
+  'Alec McKenzie Quiet Stand day2 right 3',
+  
+  'Arron Robinson Shoulder ISO-Y day1 left 1', # AMTI zeored with 10N applied?
+  'Arron Robinson Shoulder ISO-Y day1 left 2',
+  'Arron Robinson Shoulder ISO-Y day1 left 3',
+  
+  'Andrew McGill Drop Jump day1 right 3',
+  'Andrew McGill Single Leg Range of Stability day1 right 3',
+  'Andrew McGill Single Leg Range of Stability day2 right 2',
+  'Andrew McGill Single Leg Range of Stability day2 right 3',
+  
+  'Arjun Ramnath Single Leg Hop Test day2 right 1',
+  
+  'Artem Redine Single Leg Hop Test day1 left 2',
+  'Artem Redine Single Leg Hop Test day2 left 1',
+  'Artem Redine Countermovement Jump day1 right 2',
+  
+  'Ben Goodlich Single Leg Hop Test day2 left 1',
+  'Ben Goodlich Single Leg Hop Test day2 left 3',
+  
+  'Brad Cornish Quiet Stand day1 left 2',
+  'Brad Cornish Quiet Stand day1 right 2',
+  'Brad Cornish Countermovement Jump day1 left 2',
+  
+  'Erin Clark Single Leg Range of Stability day1 right 1',
+  'Erin Clark Single Leg Range of Stability day1 right 3',
+  'Erin Clark Single Leg Range of Stability day2 right 1',
+  
+  'Chelsea Lane Single Leg Range of Stability day1 right 2',
+  
+  'Claire Crossley FD Quiet Stand day2 right 3',
+  'Claire Crossley FD Quiet Stand day2 left 3',
+  'Claire Crossley FD Quiet Stand day1 left 2',
+  'Claire Crossley FD Quiet Stand day1 right 2',
+  'Claire Crossley FD Quiet Stand day1 left 3',
+  'Claire Crossley FD Quiet Stand day1 right 3',
+  
+  'Jonothan Ball Single Leg Hop Test day1 left 2',
+  
+  'Keema Lucassen Single Leg Hop Test day1 left 1',
+  'Keema Lucassen Single Leg Hop Test day1 right 1',
+  'Keema Lucassen Single Leg Hop Test day1 right 3',
+  'Keema Lucassen Single Leg Hop Test day2 left 1',
+  'Keema Lucassen Single Leg Hop Test day2 left 2',
+  'Keema Lucassen Single Leg Hop Test day2 left 3',
+  'Keema Lucassen Single Leg Hop Test day2 right 1',
+  
+  'Kit Chan Quiet Stand day2 right 1',
+  
+  'Liam Browne Single Leg Hop Test day1 left 1',
+  'Liam Browne Single Leg Hop Test day1 left 3',
+  'Liam Browne Single Leg Hop Test day1 right 1',
+  'Liam Browne Quiet Stand day1 right 1', # Incorrect zero?
+  'Liam Browne Quiet Stand day1 right 2',
+  'Liam Browne Quiet Stand day1 right 3',
+  'Liam Browne Quiet Stand day2 left 1',
+  'Liam Browne Quiet Stand day2 right 1',
+  'Liam Browne Drop Jump day1 right 3', 
+  
+  'Nathan Lyons Single Leg Hop Test day1 left 3',
+  'Nathan Lyons Single Leg Hop Test day1 right 2',
+  'Nathan Lyons Single Leg Hop Test day2 right 2',
+  'Nathan Lyons Single Leg Hop Test day2 right 3',
+  'Nathan Lyons Single Leg Range of Stability day2 right 1', # Incorrect zero?
+  'Nathan Lyons Single Leg Range of Stability day2 right 2',
+  'Nathan Lyons Single Leg Range of Stability day2 right 3',
+  'Nathan Lyons Drop Jump day2 left 3',
+  'Nathan Lyons Drop Jump day2 right 3',
+  'Nathan Lyons Drop Jump day1 left 1',
+  'Nathan Lyons Drop Jump day1 right 2',
+  'Nathan Lyons Squat Jump day1 left 3'
+)
+
+# Start processing ----
+file.info <- tibble(file_paths = list.files('data', pattern = '.csv', recursive = T, full.names = T)) %>% 
+  mutate(athlete = file_paths %>% str_remove('-.*') %>% str_remove('.*/'),
+         day = str_extract(file_paths, "(Day\\d+)") %>% tolower(),
+         device = str_extract(file_paths, "AMTI|FD"),
+         test_type = str_remove(file_paths, ".*?-") %>% str_remove("-[^-]*$") %>% str_remove("-[^-]*$") %>% str_remove("-[0-9.]+"),
+         time = file_paths %>% str_remove('-Trial[0-9]') %>% str_extract("\\d{2}\\.\\d{2}\\.\\d{2}(?=\\.csv)") %>% str_replace_all('\\.','\\:')) %>% 
+  group_by(athlete, day, device, test_type) %>% 
+  mutate(file_id = 1:length(time)) %>% 
+  group_by(athlete, day, test_type) %>% 
+  group_nest() %>% 
+  filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+  mutate(n_files_found = map_dbl(data, ~nrow(.x))) %>% 
+  filter(n_files_found > 1) %>% 
+  select(-n_files_found)
+
+# PRE-PROCESSING: LOAD, CROP, AND SAVE
+discrete.list <- list()
+GRF.list <- list()
+
+# Loop through files
+i = 1
+for(i in max(1, i):nrow(file.info)){
+  
+  print(paste(i, paste(file.info[i, c(1,2,3)], collapse = ' | ')))
+  
+  # Select current file info 
+  info <- file.info[i,] %>% unnest(data)
+  
+  # Take FD body weight and update AMTI save for reupload
+  if(!(info$test_type[[1]] %in% c('Quiet Stand', 'Single Leg Range of Stability'))) {
+    for(ii in info$file_id){
+      info.id = info %>% filter(file_id == ii)
+      FD.path = info.id$file_paths[info.id$device == 'FD']
+      AMTI.path = info.id$file_paths[info.id$device == 'AMTI']
+      FD.bw = read_csv(FD.path, skip = 1, n_max = 1, col_names =  F, col_types = cols())$X2
+      AMTI.file = readLines(AMTI.path)
+      AMTI.file.updated = gsub(pattern = "Weight,([0-9]+(\\.[0-9]+)?)", replace = paste0("Weight,", FD.bw), x = AMTI.file)
+      AMTI.save = AMTI.path %>% str_replace('data', 'data_adjust_bodyweight')
+      if(!dir.exists(dirname(AMTI.save))){dir.create(dirname(AMTI.save), recursive = T)}
+      writeLines(AMTI.file.updated, con = AMTI.save)
+    }
+  }
+
+  # Select phase metrics
+  phases <- data.phase %>%
+    filter(athlete == file.info$athlete[i],
+           test_type == file.info$test_type[i],
+           day == tolower(file.info$day[i]),
+           time %in% info$time) %>% 
+    pivot_wider(names_from = metric) %>%
+    arrange(time) %>% 
+    group_by(device) %>% 
+    mutate(file_id = as.numeric(factor(time, levels= unique(time))), .before = 7) %>% 
+    ungroup()
+  
+  
+  if(file.info$test_type[i] %in% c('Quiet Stand', 'Single Leg Range of Stability')){
+    phases <- phases %>% 
+      filter(trial != 'Left') %>% 
+      group_by(device) %>% 
+      mutate(file_id = row_number()) %>% 
+      ungroup()
+  }
+  
+  # Task specific phase events
+  if(file.info$test_type[i] == 'Countermovement Jump'){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = phases$`Start of Movement [s]`-0.5, 
+      finish = phases$`Start of Movement [s]` + phases$`Eccentric Duration [ms]`/1000 + phases$`Concentric Duration [ms]`/1000 + phases$`Flight Time [ms]`/1000 + 0.5)
+  } else if (file.info$test_type[i] == 'Drop Jump'){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = phases$`Drop Landing [s]`-0.1, 
+      finish = phases$`Drop Landing [s]` + phases$`Contact Time [s]`+ phases$`Flight Time [ms]`/1000 + 0.5)
+  } else if(file.info$test_type[i] %in% c('Hop Test', 'Single Leg Hop Test')){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = phases$`Start of Movement [s]`, 
+      finish = phases$`Start of Movement [s]`+3)
+  }else if(file.info$test_type[i] %in% c('Isometric Mid-Thigh Pull', 'Shoulder ISO-I', 'Shoulder ISO-T', 'Shoulder ISO-Y')){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = phases$`Start of Movement [s]`, 
+      finish = phases$`Start of Movement [s]` + 4)
+  }else if(file.info$test_type[i] %in% c('Quiet Stand', 'Single Leg Range of Stability')){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = -Inf,
+      finish = Inf)
+  }else if(file.info$test_type[i] == 'Squat Assessment'){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = phases$`Hop/Rep Start [s]`,
+      finish = phases$`Hop/Rep End [s]`)
+  }else if(file.info$test_type[i] == 'Squat Jump'){
+    phases <- phases %>% transmute(
+      athlete, test_type, device, day, time, trial, rep, file_id,
+      start = phases$`Start of Movement [s]`-0.5,
+      finish = phases$`Start of Movement [s]` + phases$`Contraction Time [ms]`/1000 + phases$`Flight Time [ms]`/1000 + 0.5)
+  }
+  
+  col.list <- c('force_left', 'force_right', 'COPX_left', 'COPY_left', 'COPX_right', 'COPY_right')
+  
+  # Combine phase + file info | load data | crop to phase metrics
+  force.data <- left_join(phases, info, by = join_by(athlete, test_type, device, day, time, file_id)) %>% 
+    mutate(n_skip = map_dbl(file_paths, ~grep('Time', fread(file = .x, nrows = 30,  fill=TRUE) %>% pull(1)))) %>% 
+    mutate(data = map2(file_paths, n_skip, ~fread(.x, skip = .y))) %>% 
+    mutate(data = map2(data, start, ~filter(.x, Time >= .y))) %>% 
+    mutate(data = map2(data, finish, ~filter(.x, Time <= .y))) %>% 
+    mutate(frequency = map_dbl(file_paths, ~fread(.x, nrows = 5, header = F) %>% 
+                                 filter(V1 == 'Frequency') %>% pull(V2) %>% as.numeric)) %>% 
+    select(-n_skip, -start, -finish, -time, -file_paths) %>% 
+    pivot_wider(names_from = device, values_from = c(data, frequency)) %>% 
+    mutate(downsample_ratio = frequency_AMTI/frequency_FD) %>% 
+    mutate(data_AMTI = map(data_AMTI, ~rename(.x, 
+                                              'force_left' = 'Z Left', 
+                                              'force_right' = 'Z Right',
+                                              'COPX_left' = 'COPX Left', 
+                                              'COPY_left' = 'COPY Left', 
+                                              'COPX_right' = 'COPX Right', 
+                                              'COPY_right' = 'COPY Right'))) %>%
+    mutate(data_FD = map(data_FD, ~rename(.x, 
+                                          'force_left' = matches("^(Left|Z Left)$"), 
+                                          'force_right' = matches("^(Right|Z Right)$")))) %>% 
+    mutate(data_AMTI = map2(data_AMTI, downsample_ratio, 
+                            ~normalise(.x, index.col = 'Time', data.col = names(.x)[names(.x) %in% col.list], nDataPoints = nrow(.x)/.y))) %>% 
+    select(-frequency_FD, -frequency_AMTI, -downsample_ratio, FD = data_FD, AMTI = data_AMTI) %>% 
+    mutate(lag = NA)
+
+  # COP ONLY - center GRF and COP
+  if(file.info$test_type[i] %in% c('Quiet Stand', 'Single Leg Range of Stability')){
+    
+    force.data <- force.data %>%
+      mutate(FD = map(FD, ~mutate(.x, 
+                                  #'force_left' = force_left - mean(force_left), 
+                                  #'force_right' = force_right - mean(force_right),
+                                  'COPX_left' = `COPX Left` - mean(`COPX Left`),
+                                  'COPY_left' = `COPY Left` - mean(`COPY Left`),
+                                  'COPX_right' = `COPX Right` - mean(`COPX Right`),
+                                  'COPY_right' = `COPY Right` - mean(`COPY Right`)))) %>% 
+      mutate(AMTI = map(AMTI, ~mutate(.x, 
+                                  #'force_left' = force_left - mean(force_left), 
+                                  #'force_right' = force_right - mean(force_right),
+                                  'COPX_left' = COPX_left - mean(COPX_left),
+                                  'COPY_left' = COPY_left - mean(COPY_left),
+                                  'COPX_right' = COPX_right- mean(COPX_right),
+                                  'COPY_right' = COPY_right - mean(COPY_right))))
+  }
+  
+  # Loop through trials and CCF align
+  for(j in 1:nrow(force.data)){
+      
+    data.AMTI = force.data$AMTI[[j]]
+    data.FD = force.data$FD[[j]]
+    
+    if(force.data$trial[j] == 'Left'){
+      data.AMTI$force = data.AMTI$force_left
+      data.FD$force = data.FD$force_left
+    } else {
+      data.AMTI$force = data.AMTI$force_right
+      data.FD$force = data.FD$force_right
+    }
+    
+    AMTI.smooth <- predict(loess(data = data.AMTI, formula = force ~ time_normalised, span = 0.01),data.AMTI)
+    FD.smooth  <- predict(loess(data = data.FD, formula = force ~ Time, span = 0.01),data.FD)
+      
+    ggplot() + aes(y = force) +
+      geom_line(data = data.FD, color = cols['FD'], aes(x = 1:nrow(data.FD))) +
+      geom_line(data = data.AMTI, color = cols['AMTI'], aes(x = 1:nrow(data.AMTI))) +
+      geom_line(aes(x = 1:length(FD.smooth), y = FD.smooth)) +
+      geom_line(aes(x = 1:length(AMTI.smooth), y = AMTI.smooth))
+    
+    s1 <- FD.smooth
+    s2 <- AMTI.smooth
+    
+    ccf <- ccf(diff(s1), diff(s2), lag.max = Inf, plot = F)
+    lag <- ccf$lag[[which.max(ccf$acf)]] -1
+
+    force.data$lag[j] <- lag
+    
+  }
+  
+  # Adjust for lag & time normalise & plate offset
+  force.data.sync <- force.data %>% 
+    mutate(FD = case_when(lag > 0 ~ map2(FD, lag, ~mutate(tail(.x, -abs(.y)))),
+                          lag <= 0 ~ FD)) %>% 
+    mutate(AMTI = case_when(lag < 0 ~ map2(AMTI, lag, ~mutate(tail(.x, -abs(.y)))),
+                            lag >= 0 ~ AMTI)) %>% 
+    mutate(crop = map2_dbl(FD, AMTI, ~min(nrow(.x),nrow(.y)))) %>% 
+    mutate(FD = map2(FD, crop, ~head(.x, .y)),
+           AMTI = map2(AMTI, crop, ~head(.x, .y))) %>%
+    select(-lag, -crop) %>% 
+    pivot_longer(c(FD, AMTI), names_to = 'device') 
+  
+  force.data.sync.norm <- force.data.sync %>% 
+    mutate(value = map(value, ~normalise(.x, index.col = 'Time', data.col = col.list, nDataPoints = 500))) %>%
+    unnest(value) 
+    #mutate(Left = if_else(device == 'AMTI', Left - 2, Left), # CORRECT STATIONARY OFFSET
+           #Right = if_else(device == 'AMTI', Right - 2, Right))
+  
+  # Inspect
+  if(T){
+    ggplot(force.data.sync.norm) + aes(y = force_right, x = time_normalised, color = device) +
+      facet_wrap(vars(trial, rep)) + 
+      geom_line() +
+      scale_color_manual(values = cols)
+    
+    ggplot(force.data.sync.norm) + aes(y = force_left, x = time_normalised, color = device) +
+      facet_wrap(vars(trial, rep)) + 
+      geom_line() +
+      scale_color_manual(values = cols)
+  }
+  
+  if(T){
+    ggplot(force.data.sync.norm) + aes(y = COPX_right, x = time_normalised, color = device) +
+      facet_wrap(vars(trial, rep)) + 
+      geom_line() +
+      scale_color_manual(values = cols)
+    
+     ggplot(force.data.sync.norm) + aes(y = COPY_right, x = time_normalised, color = device) +
+      facet_wrap(vars(trial, rep)) + 
+      geom_line() +
+      scale_color_manual(values = cols)
+  }
+  
+  ##### Save time synced COP data for reupload into ForceDecks software
+  if(info$test_type[[1]] %in% c('Quiet Stand', 'Single Leg Range of Stability')) {
+    
+    for(select.device in unique(force.data.sync$device)){
+      data.device <- force.data.sync %>% filter(device == select.device) %>% unnest(value)
+      
+      var.names = c('Z Left' = 'force_left',
+                    'COPX Left' = 'COPX_left',
+                    'COPY Left' = 'COPY_left',
+                    'Z Right' = 'force_right',
+                    'COPX Right' = 'COPX_right',
+                    'COPY Right' = 'COPY_right')
+      
+      trial.length <- if_else(info$test_type[[1]] == 'Quiet Stand', 10 ,8)
+      
+      rep.list <- list()
+      start.time <- c(3, 6+trial.length, 9+trial.length*2)
+      for(select.rep in unique(data.device$rep)){
+        data.device.rep <- data.device %>% filter(rep == select.rep)
+        
+        shift.time = min(data.device.rep$Time) - start.time[select.rep]
+        time.increments = median(diff(data.device.rep$Time))
+
+        rep.list[[select.rep]] <- data.device.rep %>% 
+          select(Time, all_of(var.names)) %>% 
+          mutate(Time = Time - shift.time) %>% 
+          filter(Time < (start.time[select.rep] + trial.length + time.increments*2)) %>% 
+          bind_rows(tibble(Time = seq(start.time[select.rep]-3, start.time[select.rep]-time.increments, time.increments)), .) %>% 
+          mutate_all(~ ifelse(is.na(.), 0, .))
+        
+        if(select.device == 'AMTI'){rep.list[[select.rep]] <- rep.list[[select.rep]] %>% mutate('X Left' = 0, 'Y Left' = 0, 'X Right' = 0, 'Y Right' = 0)}
+        
+      }
+      new.data <- bind_rows(rep.list) %>% mutate(across(everything(), as.character)) %>% rbind(colnames(.), .)
+      
+      # Create ForceDecks CSV file
+      file.load <- info %>% filter(device == select.device) %>% slice(1)%>% pull(file_paths)
+      file.save <- file.load %>% str_remove('-Trial[0-9]') %>% basename()
+      
+      header <- fread(file.load, nrows = 8, header = FALSE) %>%
+        mutate(V2 = str_remove(V2, ' \\(Post-analysis Trial [0-9]\\)'),
+               V2 = ifelse(V1 == 'Data Source', paste0('\"',V2,'\"'), V2)) %>% 
+        unite(V1, V2, col = 'X', sep = ',') %>% deframe() %>% paste(collapse = '\n')
+      
+      body <- new.data %>% 
+        unite(all_of(names(.)), col = 'X', sep = ',')  %>% deframe() %>% paste(collapse = '\n')
+
+      con <- file(paste('data_COP_synced',info$test_type[[1]], select.device, file.save, sep='\\'), "w")
+      cat(header, body, file = con, sep = '\n\n')
+      close.connection(con)
+
+    }
+  }
+  
+  
+  ##### SAVE CONTINUOUS GRF TIME SERIES
+  add.GRF <- force.data.sync.norm %>%
+    pivot_longer(contains(c('left','right'))) %>% 
+    separate(name, into = c('name', 'side')) %>% 
+    filter(tolower(trial) == side | trial == 'Trial') %>%  
+    select(-trial) %>% 
+    pivot_wider(names_from = name, values_from = value)
+  
+  GRF.list[[i]] <- add.GRF
+  
+  ##### EXTRACT MEAN AND PEAK GRF
+  add.discrete <- add.GRF %>% 
+    group_by(athlete, test_type, device, day, side, rep) %>% 
+        summarise(
+          peak_force = max(force),
+          mean_force = mean(force),
+          peak_COPX = max(COPX),
+          mean_COPX = mean(COPX),
+          peak_COPY = max(COPY),
+          mean_COPY = mean(COPY), .groups = 'drop')
+
+  discrete.list[[i]] <-  add.discrete
+  
+}
+
+# Combine data into data frame
+GRF.data.orig <- bind_rows(GRF.list)
+discrete.data.orig <- bind_rows(discrete.list)
+
+# Remove invalid trials
+discrete.data <- discrete.data.orig  %>% 
+  filter(!(paste(athlete, test_type, day, side, rep) %in% remove.invalid))
+
+GRF.data <- GRF.data.orig  %>% 
+  select(-file_id, -Time) %>% 
+  filter(!(paste(athlete, test_type, day, side, rep) %in% remove.invalid))
+
+# Save
+saveRDS(discrete.data, 'app_data_manuscript/discrete_data.RDS')
+saveRDS(GRF.data, 'app_data_manuscript/GRF_data.RDS')
+
+```
+
+```{r EDIT BODYWEIGHT, eval=FALSE, include=FALSE }
+
+tibble(paths = list.files(path = 'data', pattern = 'csv', recursive = T, full.names = T))
+
+
+paths <- paths[!grepl('Single Leg Range of Stability|Quiet Stand', paths)] # INVIDIUALS TRIALS, NOT WHOLE TEST STORED
+
+
+
+```
+
+```{r CREATE TABLE FUNCTION}
+metricTable <- function(data, select_test_type, table.size = 10) {
+  # data = reliability_validity
+  # select_test_type = "Isometric Mid-Thigh Pull"
+  
+  df.table <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    select(metric, ICC_group_FD, ICC_FD, ICC_lower_FD, ICC_upper_FD, SEM_FD, MDC_FD, PDiff_group, PDiff) %>% 
+    mutate(unit = str_extract(metric,'\\[(.*?)\\]') %>% str_remove('\\[') %>% str_remove('\\]') %>% str_replace_na('')) %>% 
+    filter(!is.na(ICC_FD))
+  
+  gt(df.table) %>% 
+    opt_interactive(
+      page_size_default = nrow(df.table),
+      #use_search = T,
+      use_pagination = F,
+      use_pagination_info = F,
+      use_filters = T,
+      use_highlight = T,
+      use_compact_mode = T,
+      use_page_size_select = F
+    ) %>% 
+    opt_table_font(
+      font = "Arial, sans-serif") %>% 
+    fmt_number(
+      columns = c(ICC_FD, ICC_lower_FD, ICC_upper_FD, SEM_FD, MDC_FD),
+      decimals = 2) %>% 
+    fmt_number(
+      columns = SEM_FD,
+      rows = abs(SEM_FD) > 10,
+      decimals = 0) %>% 
+    fmt_percent(
+      columns = c(PDiff), 
+      decimals = 0,
+      scale_values = F) %>%
+    fmt_number(
+      columns = MDC_FD,
+      rows = abs(MDC_FD) > 10,
+      decimals = 0) %>% 
+    cols_label(
+      metric = "<b>Metric</b>",
+      ICC_group_FD = '<b>Reliability</b>',
+      ICC_FD = '<b>ICC</b><br>repeatability between-days (0-1)',
+      ICC_lower_FD = '<b>ICC</b><br>95% confidence interval',
+      SEM_FD = '<b>SEM</b><br>standard error of measurement',
+      MDC_FD = '<b>MDC</b><br>minimal detectable change',
+      PDiff_group = '<b>Validity</b>',
+      PDiff = '<b>Agreement</b><br>% different to lab forceplate',
+      .fn = md) %>% 
+    cols_width(
+      metric ~ px(380), 
+      ICC_group_FD ~ px(130),
+      ICC_FD ~ px(140),
+      ICC_lower_FD ~ px(140),
+      SEM_FD ~ px(140),
+      MDC_FD ~ px(140),
+      PDiff_group ~ px(130),
+      PDiff ~ px(130)) %>% 
+    cols_align(
+      columns = -metric,
+      align = 'center') %>% 
+    cols_merge(
+      columns = c(ICC_lower_FD, ICC_upper_FD),
+      pattern = '{1}-{2}') %>% 
+    cols_merge(
+      columns = c(SEM_FD, unit),
+      pattern = '{1} {2}') %>% 
+    cols_merge(
+      columns = c(MDC_FD, unit),
+      pattern = '{1} {2}') %>% 
+    # tab_style(
+    #   locations = cells_body(columns = c(ICC, PDiff)),
+    #   style = list(cell_text(weight = "bold"))) %>% 
+    data_color(
+      columns = ICC_group_FD,
+      palette = rev(as.character(col.gradient))) %>% 
+    data_color(
+      columns = PDiff_group,
+      palette = as.character(col.gradient))
+  
+}
+```
+
+```{r CREATE SUMMARY FIGURES}
+
+summaryReliabiltyBar <- function(data, select_test_type) {
+  # data = reliability_validity
+  # select_test_type = "Isometric Mid-Thigh Pull"
+  
+  group.labels <- c("Excellent" = "Excellent<br> <span style='font-size: 16px'>ICC>0.9</span>",
+                    "Good" = "Good<br> <span style='font-size: 16px'>ICC=0.75-0.9</span>",
+                    "Moderate" = "Moderate<br> <span style='font-size: 16px'>ICC=0.5-0.75</span>",
+                    "Poor" = "Poor<br> <span style='font-size: 16px'>ICC<0.5</span>")
+
+  df.plot <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    mutate(ICC_group_FD = str_replace_all(ICC_group_FD, group.labels) %>% factor(group.labels))
+
+  
+  ## Bar plot
+  ggplot(df.plot) + aes(x = ICC_group_FD, fill = ICC_group_FD) + 
+    geom_bar() +
+    geom_text(aes(label = scales::percent(after_stat(count)/sum(after_stat(count)))), stat = 'count', 
+              vjust = -0.5, size = (text.size+6)/.pt) + 
+    coord_cartesian(clip = 'off') +
+    scale_x_discrete(drop = FALSE) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(8)) +
+    scale_fill_manual(values = col.gradient) +
+    ylab('Number of metrics') +
+    theme_classic() +
+    theme(plot.margin = margin(t = 1.5, unit = 'lines'),
+          legend.position = 'none',
+          text = element_text(size = text.size+6),
+          axis.text = element_text(size = text.size+6),
+          axis.text.x = ggtext::element_markdown(),
+          axis.title = element_text(size = title.size+6),
+          axis.title.x = element_blank())
+}
+
+summaryValidityBar <- function(data, select_test_type) {
+  # data = reliability_validity
+  # select_test_type = "Countermovement Jump"
+  
+  group.labels <- c("Excellent" = "Excellent<br> <span style='font-size: 16px'><5%</span>",
+                    "Good" = "Good<br> <span style='font-size: 16px'>5-10%</span>",
+                    "Moderate" = "Moderate<br> <span style='font-size: 16px'>10-20%</span>",
+                    "Poor" = "Poor<br> <span style='font-size: 16px'>>20%</span>")
+  
+  df.plot <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    mutate(PDiff_group = str_replace_all(PDiff_group, group.labels) %>% factor(group.labels))
+  
+  ## Bar plot
+  ggplot(df.plot) + aes(x = PDiff_group, fill = PDiff_group) + 
+    geom_bar() +
+    geom_text(aes(label = scales::percent(after_stat(count)/sum(after_stat(count)))), stat = 'count', 
+              vjust = -0.5, size = (text.size+6)/.pt) + 
+    coord_cartesian(clip = 'off') +
+    scale_x_discrete(drop = FALSE) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(8)) +
+    scale_fill_manual(values = col.gradient) +
+    ylab('Number of metrics') +
+    theme_classic() +
+    theme(plot.margin = margin(t = 1.5, unit = 'lines'),
+          legend.position = 'none',
+          text = element_text(size = text.size+6),
+          axis.text = element_text(size = text.size+6),
+          axis.text.x = ggtext::element_markdown(),
+          axis.title = element_text(size = title.size+6),
+          axis.title.x = element_blank())
+}
+
+summarySwarm <- function(data, select_test_type) {
+  # data = reliability_validity
+  # select_test_type = "Drop Jump"
+  
+  rename.device = c('FD' = 'ForceDecks', 'AMTI' = 'Laboratory')
+  
+  df.plot <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    select(metric, ICC_FD, ICC_AMTI) %>% 
+    pivot_longer(c(ICC_FD, ICC_AMTI), names_to = c(NA,'device'), names_sep = '_', values_to = 'ICC') %>% 
+    mutate(device = str_replace_all(device, rename.device) %>% factor(levels = rename.device))
+  
+  df.stat <- df.plot %>% 
+    pivot_wider(names_from = device, values_from = ICC) %>% 
+    mutate(percent_change = (ForceDecks - `Laboratory`)/`Laboratory`*100) %>% 
+    summarise(mean_percent_change = mean(percent_change)) %>% 
+    mutate(x = 1.5, 
+           y = 1,
+           positive = mean_percent_change>0,
+           label = paste0(ifelse(positive,'+',''),round(mean_percent_change,1),'%'))
+  
+  # ICC
+  ggplot(df.plot) + aes(x = device, y = ICC, color = device) +
+    ggbeeswarm::geom_beeswarm(cex = 3, size = 3) +
+    # geom_text(data = df.stat, inherit.aes = F, aes(x = x, y = y, label = label, color = positive), hjust = 0.5, vjust = 0, size = (text.size+6)/.pt) +
+    scale_y_continuous(limits = c(0,1), breaks = pretty_breaks(10)) +
+    scale_color_manual(values =  cols) +
+    coord_cartesian(clip = 'off') +
+    ylab('Intraclass coefficient (ICC)') +
+    theme_classic() +
+    theme(
+      plot.margin = margin(t = 1, unit = 'lines'),
+      legend.position = 'none',
+      text = element_text(size = text.size+6),
+      axis.text = element_text(size = text.size+6),
+      axis.title = element_text(size = title.size+6),
+      axis.title.x = element_blank(),
+      axis.ticks = element_blank())
+  
+
+}
+```
+
+```{r CREATE WAVEFORM COMPARISONS}
+individualWaveformFigures <- function(data, select_test_type) {
+  # data = GRF.data 
+  # select_test_type = 'Shoulder ISO-Y'
+
+  df.data <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    select(athlete, test_type, device, day, rep, side, time_normalised, force) %>% 
+    pivot_wider(names_from = device, values_from = force) %>% 
+    group_by(test_type, day, athlete, rep, side) %>% 
+    mutate(RMSE = sqrt(mean((FD - AMTI) ^ 2))) %>% ungroup %>% 
+    mutate(percentile = percent_rank(RMSE),
+           median_diff = abs(percentile - 0.5)) %>% 
+    mutate(closest_percentile = case_when(
+      percentile == min(percentile, na.rm = T) ~ 'Best trial',
+      median_diff == min(median_diff, na.rm = T) ~ 'Median trial',
+      percentile == max(percentile, na.rm = T) ~ 'Worst trial')) %>%
+    mutate(closest_percentile = factor(closest_percentile, levels = c('Best trial', 'Median trial', 'Worst trial'))) %>% 
+    na.omit() 
+  
+  device.list <- c('FD' = 'ForceDecks', 'AMTI' = 'Laboratory')
+  
+  df.plot <- df.data %>% 
+    select(time_normalised, AMTI, FD, closest_percentile, RMSE) %>% 
+    pivot_longer(c(AMTI, FD), names_to = 'device') %>% 
+    mutate(device = str_replace_all(device, device.list) %>% factor(levels = device.list)) %>% 
+    mutate(time_normalised_scaled = scales::rescale(time_normalised, c(0,1)))
+  
+  ggplot(df.plot) + aes(x = time_normalised_scaled, y = value, color = device, linetype = device) +
+    facet_wrap(vars(closest_percentile), nrow = 1) +
+    geom_line(linewidth = 1) +
+    geom_text(data = df.plot %>% filter(time_normalised == 1 & device == 'ForceDecks'), inherit.aes = F, 
+              aes(label = paste('RMSE =', round(RMSE,1), ' N')), 
+              x = 0.5, y = Inf, hjust = 0.5, vjust = 1, size = (text.size)/.pt) +
+    scale_x_continuous(breaks = pretty_breaks(5), labels = percent_format()) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(5), limits = c(min(df.plot$value), max(df.plot$value)*1.1)) +
+    scale_linetype_manual(values = c('Laboratory' = 'longdash', 'ForceDecks' = 'solid')) +
+    scale_color_manual(values = cols) +
+    ylab('Vertical ground reaction force (N)') +
+    xlab('Time') +
+    theme_classic() +
+    theme(panel.grid.major = element_line(),
+          plot.margin = margin(t = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(size = text.size+2),
+          text = element_text(size = text.size),
+          axis.title = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.ticks = element_blank(),
+          legend.text = element_text(size = text.size),
+          legend.title = element_blank(),
+          plot.background = element_rect(fill = 'white', color ='white'))
+}
+
+individualCOPFigures <- function(data, select_test_type) {
+  # data = GRF.data 
+  # select_test_type = 'Quiet Stand'
+
+  df.data <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    select(athlete, test_type, device, day, side, rep, time_normalised, COPX,  COPY) %>% 
+    pivot_wider(names_from = device, values_from = c(COPX,COPY)) %>% 
+    group_by(test_type, day, athlete, side, rep) %>% 
+    mutate(COPX_RMSE = sqrt(mean((COPX_AMTI - COPX_FD) ^ 2, na.rm = T)),
+           COPY_RMSE = sqrt(mean((COPY_AMTI - COPX_FD) ^ 2, na.rm = T)),
+           RMSE = (COPX_RMSE + COPY_RMSE)/2) %>% ungroup %>% 
+    mutate(percentile = percent_rank(RMSE),
+           median_diff = abs(percentile - 0.5)) %>% 
+    mutate(closest_percentile = case_when(
+      percentile == min(percentile, na.rm = T) ~ 'Best trial',
+      median_diff == min(median_diff, na.rm = T) ~ 'Median trial',
+      percentile == max(percentile, na.rm = T) ~ 'Worst trial')) %>%
+    mutate(closest_percentile = factor(closest_percentile, levels = c('Worst trial', 'Median trial', 'Best trial'))) %>% 
+    na.omit() 
+  
+  device.list <- c('FD' = 'ForceDecks', 'AMTI' = 'Laboratory')
+  
+  df.plot <- df.data %>% 
+    select(time_normalised, COPX_AMTI, COPX_FD, COPY_AMTI, COPY_FD, closest_percentile, COPX_RMSE, COPY_RMSE) %>% 
+    pivot_longer(c(COPX_AMTI, COPX_FD, COPY_AMTI, COPY_FD, COPX_RMSE, COPY_RMSE), names_to = c('axis', 'device'), names_sep = '_') %>% 
+    pivot_wider(names_from = device) %>% 
+    pivot_longer(c(AMTI, FD), names_to = 'device') %>% 
+    mutate(axis = str_replace_all(axis, c('COPX' = 'Medial-lateral', 'COPY' = 'Anterior-posterior')))  %>% 
+    mutate(device = str_replace_all(device, device.list) %>% factor(levels = device.list)) %>% 
+    mutate(time_normalised_scaled = scales::rescale(time_normalised, c(0,1)))
+  
+  ggplot(df.plot) + aes(x = time_normalised_scaled, y = value, color = device, linetype = device) +
+    facet_grid(rows = vars(axis), cols = vars(closest_percentile)) +
+    geom_line(linewidth = 1) +
+    geom_text(data = df.plot %>% filter(time_normalised == 1 & device == 'ForceDecks'), inherit.aes = F, 
+              aes(label = paste('RMSE =', round(RMSE,1), ' mm')), 
+              x = 0.5, y = Inf, hjust = 0.5, vjust = 1, size = (text.size)/.pt) +
+    scale_linetype_manual(values = c('Laboratory' = 'longdash', 'ForceDecks' = 'solid')) +
+    scale_x_continuous(breaks = pretty_breaks(5), labels = percent_format()) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(5), limits = c(min(df.plot$value), max(df.plot$value)*1.1)) +
+    scale_color_manual(values = cols) +
+    ylab('Centre of pressure (mm)') +
+    xlab('Time') +
+    theme_classic() +
+    theme(panel.grid.major = element_line(),
+          plot.margin = margin(t = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(size = text.size+2),
+          text = element_text(size = text.size),
+          axis.title = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.ticks = element_blank(),
+          legend.text = element_text(size = text.size),
+          legend.title = element_blank())
+}
+
+avgReliabilityWaveformFigures <- function(data, select_test_type) {
+  # data = GRF.data
+  # select_test_type = 'Countermovement Jump'
+  
+  df.data <- data %>%
+    filter(test_type == select_test_type) %>% 
+    select(-Left)  # ONLY USE RIGHT LEG FOR WAVEFORM
+  
+  # Calculate mean & spread
+  df.plot <- df.data %>% 
+    group_by(device, day, time_normalised, athlete) %>% 
+    summarise(participant_mean = mean(Right)) %>% 
+    summarise(force_mean = mean(participant_mean),
+              force_sd = sd(participant_mean),
+              n = length(participant_mean),                            
+              force_se = force_sd/sqrt(n)) %>% 
+    ungroup()
+  
+  # Calculate RMSE
+  df.RMSE <- df.data %>% 
+    pivot_wider(names_from = day, values_from = Right) %>% 
+    group_by(test_type, device, athlete, trial) %>% 
+    summarise(RMSE = sqrt(mean((day2 - day1) ^ 2))) %>% 
+    na.omit() %>% 
+    summarise(participant_mean = mean(RMSE)) %>%
+    summarise(RMSE_mean = mean(participant_mean),
+              n = length(participant_mean)) %>% 
+    mutate(label = paste('RMSE =', round(RMSE_mean,0), 'N'))
+  
+  # Plot
+  ggplot(df.plot) + aes(x = time_normalised, y = force_mean, ymin = force_mean-force_se, ymax = force_mean+force_se) +
+    facet_wrap(vars(device)) +
+    geom_ribbon(aes(fill = day), alpha = 0.3) +
+    geom_line(aes(color = day), linewidth = 1) +
+    geom_text(data = df.RMSE, inherit.aes = F, aes(label = label), 
+              x = Inf, y = Inf, hjust = 1.1, vjust = 1.4, size = (text.size-1)/.pt) +
+    scale_x_continuous(expand = c(0,0), breaks = pretty_breaks(5)) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(5)) +
+    scale_color_manual(values = cols) +
+    scale_fill_manual(values = cols) +
+    ylab('Vertical ground reaction force (N)') +
+    xlab('Time') +
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          plot.margin = margin(t=0, l=0, r=0, b=0),
+          strip.background = element_blank(),
+          strip.text = element_text(size = text.size),
+          panel.border = element_rect(colour = 'grey'),
+          text = element_text(size = text.size),
+          axis.title = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.text.x = element_blank(),
+          axis.ticks = element_blank(),
+          legend.text = element_text(size = text.size),
+          legend.title = element_blank(),
+          legend.position = c(0.1,0.9),
+          legend.background = element_rect(fill = 'transparent'))
+}
+
+avgValidityWaveformFigures <- function(data, select_test_type) {
+  # data = GRF.data
+  # select_test_type = 'Shoulder ISO-I'
+  
+  df.data <- data %>%
+    filter(test_type == select_test_type)
+  
+  # Calculate mean & spread
+  df.plot <- df.data %>% 
+    group_by(device, time_normalised, athlete) %>% 
+    summarise(participant_mean = mean(force),
+              n = length(force)) %>% 
+    summarise(force_mean = mean(participant_mean),
+              force_sd = sd(participant_mean),
+              n = length(participant_mean),                            
+              force_se = force_sd/sqrt(n)) %>% 
+    ungroup()
+  
+  # Calculate RMSE
+  df.RMSE <- df.data %>% 
+    pivot_wider(names_from = device, values_from = force) %>% 
+    group_by(test_type, day, athlete, trial) %>% 
+    summarise(RMSE = sqrt(mean((FD - AMTI) ^ 2))) %>% 
+    na.omit() %>% 
+    group_by(test_type, athlete) %>% 
+    summarise(participant_mean = mean(RMSE),
+              n = length(RMSE)) %>%
+    summarise(RMSE_mean = mean(participant_mean),
+              n = length(participant_mean)) %>% 
+    mutate(label = paste('RMSE =', round(RMSE_mean,0), 'N'))
+  
+  # Plot
+  ggplot(df.plot) + aes(x = time_normalised, y = force_mean, ymin = force_mean-force_se, ymax = force_mean+force_se) +
+    geom_ribbon(aes(fill = device), alpha = 0.3) +
+    geom_line(aes(color = device), linewidth = 1) +
+    geom_text(data = df.RMSE, inherit.aes = F, aes(label = label), 
+              x = Inf, y = Inf, hjust = 1.1, vjust = 1.4, size = (text.size)/.pt) +
+    scale_x_continuous(expand = c(0,0), breaks = pretty_breaks(5)) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(10)) +
+    scale_color_manual(values = cols) +
+    scale_fill_manual(values = cols) +
+    ylab('Vertical ground reaction force (N)') +
+    xlab('Time') +
+    theme_classic() +
+    theme(panel.grid = element_blank(),
+          plot.margin = margin(t=0, l=0, r=0, b=0),
+          text = element_text(size = text.size),
+          axis.title = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.text.x = element_blank(),
+          axis.ticks = element_blank(),
+          legend.text = element_text(size = text.size),
+          legend.title = element_blank(),
+          legend.position = c(0.1,0.9))
+}
+
+```
+
+```{r CREATE DISCRETE BLAND ALTMAN}
+blandAltmanFigures <- function(data, select_test_type, select_metric) {
+  # data = discrete.data
+  # select_test_type = 'Squat Assessment'
+  # select_metric = 'mean'
+
+  df <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    pivot_longer(-c(athlete,test_type, device, day, side, rep), names_to = 'metric') %>% 
+    pivot_wider(names_from = device) %>% 
+    separate(metric, into = c('metric', 'variable'), sep  ='_') %>% 
+    filter(metric == select_metric,
+           variable == 'force') %>% 
+    mutate(differences = FD - AMTI,
+           means = (FD + AMTI)/2) 
+  
+  df.stats <- rmba(data = df,
+       measure_one_col = 'AMTI',
+       measure_two_col = "FD",
+       condition_col = "side",
+       id_col = "athlete",
+       verbose = FALSE)
+  
+  df.plot <- tibble(means = df$means,
+                    differences = df$differences)
+  
+  y.max = max(abs(df$differences))
+  x.min = min(df$means)*0.97
+  x.max = max(df$means)*1.03
+  title = if_else(select_metric == 'peak', 'Peak vGRF', 'Mean vGRF')
+  
+  ggplot(df.plot) + aes(x = means, differences) +
+    geom_point(color = '#468B97', alpha = 0.7, size = 2) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = df.stats$upper_agreement_limit, linetype = 'longdash') +
+    geom_hline(yintercept = df.stats$lower_agreement_limit, linetype = 'longdash') +
+    geom_hline(yintercept = df.stats$bias, color = '#EF6262', linewidth = 1) +
+    coord_cartesian(clip = 'off') +
+    annotate('text', label = 'Upper LOA', x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f', df.stats$upper_agreement_limit),' N'), x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f', df.stats$lower_agreement_limit), ' N'), x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f', df.stats$bias), ' N'), x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = title, x = (x.max+x.min)/2, y = y.max,
+             hjust = 0.5, vjust = 0.2, size = title.size/.pt) +
+    xlab('Average (N)') +
+    ylab('Difference (N)') +
+    scale_x_continuous(breaks = pretty_breaks(5), expand = c(0,0), limits = c(x.min,x.max)) +
+    scale_y_continuous(breaks = pretty_breaks(8)) +
+    theme_minimal() +
+    theme(plot.margin = margin(r = 50),
+          panel.grid = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_text(size = title.size),
+          axis.line = element_line())
+  
+}
+
+blandAltmanCOPFigures <- function(data, select_test_type, select_metric) {
+  # data = discrete.data
+  # select_test_type = 'Quiet Stand'
+  # select_metric = 'mean'
+
+  df.plot <- data %>% 
+    filter(test_type == select_test_type) %>% 
+    pivot_longer(-c(athlete,test_type, device, day, side, rep), names_to = 'metric') %>% 
+    pivot_wider(names_from = device) %>% 
+    separate(metric, into = c('metric', 'axis_leg'), sep  ='_') %>% 
+    separate(axis_leg, into = c('axis', 'leg'), sep  =' ') %>% 
+    filter(metric == select_metric, axis %in% c('COPX','COPY')) %>% 
+    mutate(differences = FD - AMTI,
+           means = (FD + AMTI)/2) %>% 
+    group_nest(axis) %>% 
+    mutate(BA = map(data, ~rmba(data = .x,
+       measure_one_col = 'AMTI',
+       measure_two_col = "FD",
+       condition_col = ifelse(select_test_type == 'Quiet Stand', 'side', '1'),
+       id_col = "athlete",
+       verbose = FALSE))) %>%  
+    mutate(plot.data = map(data, ~tibble(means = .x$means, differences = .x$differences))) %>% 
+    select(-data) %>% 
+    mutate(axis = str_replace_all(axis, c('COPX' = 'Medial-lateral', 'COPY' = 'Anterior-posterior')))
+
+  plot.list <- list()
+  for(i in 1:nrow(df.plot)){
+
+    df <- df.plot$plot.data[[i]]
+    df.stats <- df.plot$BA[[i]]
+  
+  y.max = max(abs(df$differences))
+  x.min = min(df$means)*0.97
+  x.max = max(df$means)*1.03
+  title = paste(df.plot$axis[[i]], if_else(select_metric == 'peak', 'peak COP', 'mean COP'))
+  
+  plot.list[[i]] <- ggplot(df) + aes(x = means, differences) +
+    geom_point(color = '#468B97', alpha = 0.7, size = 2) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = df.stats$upper_agreement_limit, linetype = 'longdash') +
+    geom_hline(yintercept = df.stats$lower_agreement_limit, linetype = 'longdash') +
+    geom_hline(yintercept = df.stats$bias, color = '#EF6262', linewidth = 1) +
+    coord_cartesian(clip = 'off') +
+    annotate('text', label = 'Upper LOA', x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f', df.stats$upper_agreement_limit),' mm'), x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f', df.stats$lower_agreement_limit), ' mm'), x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f', df.stats$bias), ' mm'), x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = title, x = (x.max+x.min)/2, y = y.max,
+             hjust = 0.5, vjust = 0.2, size = title.size/.pt) +
+    xlab('Average (mm)') +
+    ylab('Difference (mm)') +
+    scale_x_continuous(breaks = pretty_breaks(5), limits = c(x.min, x.max), expand = c(0,0)) +
+    scale_y_continuous(breaks = pretty_breaks(8)) +
+    theme_minimal() +
+    theme(plot.margin = margin(r = 50),
+          panel.grid = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_text(size = title.size),
+          axis.line = element_line())
+  
+  }
+  
+  wrap_plots(plot.list) + plot_layout(nrow = 2)
+  
+}
+```
+
+```{r SAVE FIGURES, eval=FALSE, include=FALSE}
+
+for(task.name in unique(data.metrics$test_type)){
+
+  summaryReliabiltyBar(reliability_validity, task.name)
+  ggsave(paste0('app_figures/',task.name,'_reliability.png'), dpi = 200, width = 8, height = 6, units = 'cm', scale = 2)
+  
+  summaryValidityBar(reliability_validity, task.name)
+  ggsave(paste0('app_figures/',task.name,'_validity.png'), dpi = 200, width = 8, height = 6, units = 'cm', scale = 2)
+  
+  summarySwarm(reliability_validity, task.name) 
+  ggsave(paste0('app_figures/',task.name,'_comparison.png'), dpi = 200, width = 8, height = 6, units = 'cm', scale = 2)
+  
+  table.data <- metricTable(reliability_validity, task.name, table.size = 50)
+  gtExtras::gtsave_extra(table.data, paste0('app_figures/',task.name,'_table.png'), vwidth = 1550)
+  
+  if(task.name %in% c('Quiet Stand', 'Single Leg Range of Stability')){
+    
+    individualCOPFigures(GRF.data, task.name)
+    ggsave(paste0('app_figures/',task.name,'_timeseries.png'), dpi = 200, width = 12, height = 6, units = 'cm', scale = 2)
+    
+    blandAltmanCOPFigures(discrete.data,task.name, 'mean')
+    ggsave(paste0('app_figures/',task.name,'_agreement.png'), dpi = 200, width = 8, height = 6, units = 'cm', scale = 2)
+  }
+    
+  if(task.name %in% c("Single Leg Hop Test","Hop Test","Drop Jump","Squat Jump", "Countermovement Jump", "Squat Assessment",
+                      "Shoulder ISO-I", "Shoulder ISO-T", "Shoulder ISO-Y")){
+    
+    individualWaveformFigures(GRF.data, task.name)
+    ggsave(paste0('app_figures/',task.name,'_timeseries.png'), dpi = 200, width = 12, height = 6, units = 'cm', scale = 2)
+    
+    blandAltmanFigures(discrete.data,task.name, 'mean')
+    ggsave(paste0('app_figures/',task.name,'_agreement.png'), dpi = 200, width = 8, height = 6, units = 'cm', scale = 2)
+  }
+   
+}
+
+```
+
+```{r MANUSCRIPT - DESCRIPTIVE, eval=FALSE, include=FALSE}
+
+# n tasks
+data.metrics$test_type %>% unique %>% length
+
+# n trials
+data.metrics %>% filter(!duplicated(paste(athlete, test_type, day, trial, rep))) %>% view
+
+# n metrics
+data.metrics$metric %>% unique %>% length
+
+```
+
+```{r MANUSCRIPT - METRIC TABLE, eval=FALSE, include=FALSE}
+
+reliability_validity %>% 
+  filter(
+    test_type == 'Countermovement Jump' & metric == 'Jump Height (Imp-Mom) [cm]' |
+      test_type == 'Countermovement Jump' & metric == 'Takeoff Peak Force [N]' |
+      test_type == 'Countermovement Jump' & metric == 'Positive Takeoff Impulse [N s]' |
+      test_type == 'Drop Jump' & metric == 'RSI (Flight Time/Contact Time)' |
+      test_type == 'Drop Jump' & metric == 'Peak Landing Force [N]' |
+      test_type == 'Hop Test' & metric == 'Contact Time [ms]' |
+      test_type == 'Hop Test' & metric == 'Best Impulse [N s]' |
+      test_type == 'Isometric Mid-Thigh Pull' & metric == 'Peak Vertical Force [N]' |
+      test_type == 'Isometric Mid-Thigh Pull' & metric == 'RFD - 200ms [N/s]' |
+      test_type == 'Quiet Stand' & metric == 'Area of CoP Ellipse [mm sq]' |
+      test_type == 'Quiet Stand' & metric == 'CoP Range - Anterior-Posterior [mm]' |
+      test_type == 'Shoulder ISO-I' & metric == 'Peak Vertical Force [N]' |
+      test_type == 'Shoulder ISO-I' & metric == 'RFD - 200ms [N/s]' |
+      test_type == 'Shoulder ISO-T' & metric == 'Peak Vertical Force [N]' |
+      test_type == 'Shoulder ISO-T' & metric == 'RFD - 200ms [N/s]' |
+      test_type == 'Shoulder ISO-Y' & metric == 'Peak Vertical Force [N]' |
+      test_type == 'Shoulder ISO-Y' & metric == 'RFD - 200ms [N/s]' |
+      test_type == 'Single Leg Hop Test' & metric == 'Active Stiffness [N/m]' |
+      test_type == 'Single Leg Hop Test' & metric == 'Best Peak Force [N]' |
+      test_type == 'Single Leg Range of Stability' & metric == 'Area of CoP Ellipse [mm sq]'|
+      test_type == 'Single Leg Range of Stability' & metric == 'Mean Velocity [mm/s]'|
+      test_type == 'Squat Assessment' & metric == 'Maximum Negative Displacement [cm]'|
+      test_type == 'Squat Assessment' & metric == 'Concentric Peak Force Asymmetry [% L,R]'|
+      test_type == 'Squat Jump' & metric == 'Jump Height (Imp-Mom) [cm]'|
+      test_type == 'Squat Jump' & metric == 'Takeoff Peak Force [N]') %>% 
+  mutate(
+    ICC_lower_FD = ifelse(ICC_lower_FD < 0, 0, ICC_lower_FD)) %>% 
+  mutate(
+    day1 = case_when(mean_day1_FD >= 10 ~ sprintf("%.0f (%.0f)", mean_day1_FD, SD_day1_FD),
+                     mean_day1_FD <= 0 ~ sprintf("%.2f (%.2f)", mean_day1_FD, SD_day1_FD),
+                     mean_day1_FD < 10 ~ sprintf("%.1f (%.1f)", mean_day1_FD, SD_day1_FD)),
+    day2 = case_when(mean_day2_FD >= 10 ~ sprintf("%.0f (%.0f)", mean_day2_FD, SD_day2_FD),
+                     mean_day2_FD <= 0 ~ sprintf("%.2f (%.2f)", mean_day2_FD, SD_day2_FD),
+                     mean_day2_FD < 10 ~ sprintf("%.1f (%.1f)", mean_day2_FD, SD_day2_FD)),
+    ICC = sprintf("%.2f (%.2f-%.2f)", ICC_FD, ICC_lower_FD, ICC_upper_FD),
+    SEM_FD = case_when(SEM_FD >= 10 ~ sprintf("%.0f", SEM_FD),
+                       SEM_FD <= 0 ~ sprintf("%.2f", SEM_FD),
+                       SEM_FD < 10 ~ sprintf("%.1f", SEM_FD)),
+    MDC_FD = case_when(MDC_FD >= 10 ~ sprintf("%.0f", MDC_FD),
+                       MDC_FD <= 0 ~ sprintf("%.2f", MDC_FD),
+                       MDC_FD < 10 ~ sprintf("%.1f", MDC_FD)),
+    FD = case_when(mean_FD >= 10 ~ sprintf("%.0f (%.0f)", mean_FD, SD_FD),
+                     mean_FD <= 0 ~ sprintf("%.2f (%.2f)", mean_FD, SD_FD),
+                     mean_FD < 10 ~ sprintf("%.1f (%.1f)", mean_FD, SD_FD)),
+    AMTI = case_when(mean_AMTI  >= 10 ~ sprintf("%.0f (%.0f)", mean_AMTI , SD_AMTI),
+                     mean_AMTI  <= 0 ~ sprintf("%.2f (%.2f)", mean_AMTI , SD_AMTI),
+                     mean_AMTI  < 10 ~ sprintf("%.1f (%.1f)", mean_AMTI , SD_AMTI)),
+    PDiff = sprintf("%.0f%%", PDiff)) %>% 
+  
+  mutate(metric = str_replace_all(metric, ',', ':')) %>% 
+  
+  select(test_type, metric, day1, day2, ICC, SEM_FD, MDC_FD, ICC_group_FD, FD, AMTI, PDiff, PDiff_group) %>% 
+  
+  mutate(test_type = factor(test_type, levels = task.order)) %>% 
+  arrange(test_type) %>% 
+  
+  clipr::write_clip(sep = ',')
+
+```
+
+```{r MANUSCRIPT - SUMMARY OF METRICS, eval=FALSE, include=FALSE}
+
+  #### Reliabilty ####
+  group.labels <- c("Excellent" = "Excellent<br> <span style='font-size: 8px'>ICC>0.9</span>",
+                    "Good" = "Good<br> <span style='font-size: 8px'>ICC=0.75-0.9</span>",
+                    "Moderate" = "Moderate<br> <span style='font-size: 8px'>ICC=0.5-0.75</span>",
+                    "Poor" = "Poor<br> <span style='font-size: 8px'>ICC<0.5</span>")
+
+  df.reliability <- reliability_validity %>%
+    filter(!is.na(ICC_group_FD)) %>% 
+    group_by(test_type) %>% 
+    count(ICC_group_FD) %>% 
+    mutate(percent = n/sum(n)) %>% 
+    ungroup() %>% 
+    mutate(test_type = factor(test_type, levels = filter(., ICC_group_FD == 'Excellent') %>% arrange(percent) %>% pull(test_type))) %>% 
+    mutate(ICC_group_FD = str_replace_all(ICC_group_FD, group.labels) %>% factor(group.labels))
+
+  # Get results summary stats
+  df.reliability %>% 
+    group_by(ICC_group_FD) %>% 
+    summarise(n = sum(n), .groups = 'drop') %>% 
+    mutate('percent' = n/sum(n)*100, 'total' = sum(n))
+  
+  plot.reliabilty <- ggplot(df.reliability) + aes(y = test_type, x = percent, fill = ICC_group_FD) + 
+    geom_bar(stat = 'identity', position = position_stack(reverse = TRUE)) +
+    geom_text(data = df.reliability %>% group_by(test_type) %>% summarise(total = sum(n)),
+              inherit.aes = F, aes(label = total, y = test_type), x = 1.01, hjust = 0, size = 6/.pt) +
+    scale_fill_manual(values = col.gradient) +
+    coord_cartesian(clip = 'off') +
+    scale_x_continuous(expand = c(0,0), labels = scales::percent, breaks = pretty_breaks(5)) +
+    scale_y_discrete(expand = c(0,0)) +
+    ggtitle('Test-retest reliabilty') +
+    xlab('Percentage of all test metrics') +
+    theme_classic() +
+    theme(plot.margin = margin(r = 20),
+          legend.position = 'top',
+          legend.title = element_blank(),
+          legend.text = ggtext::element_markdown(),
+          legend.key.size = unit(0.5,'cm'),
+          legend.margin = margin(b = -5, t = -5),
+          plot.title = element_text(size = 8, hjust = 0.5),
+          text = element_text(size = 8),
+          axis.text = element_text(size = 8),
+          axis.title = element_text(size = 8),
+          axis.title.y = element_blank(),
+          axis.line = element_line(linewidth = 0.2))
+  
+  
+   #### Validity ####
+  group.labels <- c("Excellent" = "Excellent<br> <span style='font-size: 8px'><5%</span>",
+                    "Good" = "Good<br> <span style='font-size: 8px'>5-10%</span>",
+                    "Moderate" = "Moderate<br> <span style='font-size: 8px'>10-20%</span>",
+                    "Poor" = "Poor<br> <span style='font-size: 8px'>>20%</span>")
+
+  df.validity <- reliability_validity %>%
+    filter(!is.na(PDiff_group )) %>% 
+    filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+    group_by(test_type) %>% 
+    count(PDiff_group ) %>% 
+    mutate(percent = n/sum(n)) %>% 
+    ungroup() %>% 
+    mutate(test_type = factor(test_type, levels = filter(., PDiff_group  == 'Excellent') %>% arrange(percent) %>% pull(test_type))) %>% 
+    mutate(PDiff_group  = str_replace_all(PDiff_group , group.labels) %>% factor(group.labels))
+
+  # Get results summary stats
+  df.validity %>% 
+    group_by(PDiff_group) %>% 
+    summarise(n = sum(n), .groups = 'drop') %>% 
+    mutate('percent' = n/sum(n)*100, 'total' = sum(n))
+  
+  plot.validity <- ggplot(df.validity) + aes(y = test_type, x = percent, fill = PDiff_group ) + 
+    geom_bar(stat = 'identity', position = position_stack(reverse = TRUE)) +
+        geom_text(data = df.validity %>% group_by(test_type) %>% summarise(total = sum(n)),
+              inherit.aes = F, aes(label = total, y = test_type), x = 1.01, hjust = 0, size = 6/.pt) +
+    scale_fill_manual(values = col.gradient) +
+    coord_cartesian(clip = 'off') +
+    scale_x_continuous(expand = c(0,0), labels = scales::percent, breaks = pretty_breaks(5)) +
+    scale_y_discrete(expand = c(0,0)) +
+    ggtitle('Concurrent validity') +
+    xlab('Percentage of all test metrics') +
+    theme_classic() +
+    theme(plot.margin = margin(r = 20),
+          legend.position = 'top',
+          legend.title = element_blank(),
+          legend.text = ggtext::element_markdown(),
+          legend.key.size = unit(0.5,'cm'),
+          legend.margin = margin(b = -5, t = -5),
+          plot.title = element_text(size = 8, hjust = 0.5),
+          text = element_text(size = 8),
+          axis.text = element_text(size = 8),
+          axis.title = element_text(size = 8),
+          axis.title.y = element_blank(),
+          axis.line = element_line(linewidth = 0.2))
+  
+  #### Combine ####
+  plot.validity + plot.reliabilty + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 8))
+  
+  ggsave('figure3_summary.tiff', dpi = 800, width = 18, height = 9, units = 'cm', scale = 1.3)
+  
+  
+  #### Reliability FD vs LAB
+  reliability_validity %>% 
+    filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+    mutate(ICC_diff = abs(ICC_FD - ICC_AMTI)) %>% 
+    summarise(median(ICC_diff), IQR(ICC_diff), min(ICC_diff), max(ICC_diff))
+  
+
+```
+
+```{r MANUSCRIPT - COMPARE FORCEPLATE RELIABILITY, eval=FALSE, include=FALSE}
+
+df.reliability <- reliability_validity %>% 
+  select(test_type, metric, ICC_AMTI, ICC_FD)
+
+df.plot1 <- df.reliability %>% 
+  pivot_longer(c(ICC_AMTI , ICC_FD), names_pattern = '_(.+)')
+
+p1 <- ggplot(df.plot1) + aes(x = value) +
+  geom_histogram(data = filter(df.plot1, name == 'FD'), aes(y = ..count..), fill = cols['FD'], 
+                 color = 'grey50', linewidth = 0.2) +
+  geom_histogram(data = filter(df.plot1, name == 'AMTI'),  aes(y = -..count..), fill = cols['AMTI'], 
+                 color = 'grey50', linewidth = 0.2) +
+  geom_label(x=0.5, y=75, label = 'ForceDecks', color = cols['FD'], size = text.size/.pt) +
+  geom_label(x=0.5, y=-75, label = 'Laboratory', color = cols['AMTI'], size = text.size/.pt) +
+  scale_x_continuous(expand = c(0,0), breaks = pretty_breaks(5)) +
+  scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(5)) +
+  ylab('Number of metrics') +
+  xlab('ICC') +
+  theme_minimal() +
+  theme(legend.position = 'none',
+        axis.line = element_line(linewidth = 0.3),
+        axis.text = element_text(size = text.size), 
+        axis.title = element_text(size = title.size))
+
+df.plot2 <- df.reliability %>% 
+  filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+  pivot_longer(c(ICC_AMTI, ICC_FD), names_pattern = '_(.+)', names_to = 'device') %>% 
+  group_by(test_type, device) %>% 
+  summarise(mean = mean(value),
+            sd = sd(value),
+            .groups = 'drop') %>% 
+  mutate(test_type = factor(test_type, rev(task.order))) %>% 
+  mutate(device = str_replace_all(device, c('FD' = 'ForceDecks', 'AMTI' = 'Laboratory')) %>% factor(levels = c('Laboratory','ForceDecks')))
+
+p2 <- ggplot(df.plot2) + aes(y = test_type, x = mean, xmin = mean - sd, xmax = mean + sd, color = device) +
+  geom_pointrange(size = 0.3, position = position_dodge(0.5)) +
+  scale_x_continuous(breaks = pretty_breaks(5), expand = c(0,0)) +
+  scale_color_manual(values = cols) +
+  coord_cartesian(xlim = c(0,1)) +
+  guides(colour = guide_legend(reverse=T)) +
+  xlab('Mean ICC \UB1 1SD') +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank(),
+    axis.text = element_text(size = text.size),
+    axis.title = element_text(size = title.size),
+    axis.title.y = element_blank(),
+    axis.line = element_line(linewidth = 0.3),
+    axis.ticks.x = element_line(linewidth = 0.3))
+
+# df.plot2 <- df.reliability %>% 
+#   filter(test_type != 'Isometric Mid-Thigh Pull') %>% 
+#   mutate(diff = ICC_FD - ICC_AMTI) %>% 
+#   group_by(test_type) %>%
+#   summarise(mean_diff = mean(diff),
+#             sd_diff = sd(diff)) %>% 
+#   mutate(test_type = factor(test_type, rev(task.order)))
+# 
+# p2 <- ggplot(df.plot2) + aes(y = test_type, x = mean_diff, xmin = mean_diff - sd_diff, xmax = mean_diff + sd_diff) +
+#   geom_pointrange(size = 0.4) +
+#   geom_vline(xintercept = 0, linetype = 'longdash', linewidth = 0.3) +
+#   geom_text(label = 'Favours ForceDecks \U2192', x = 0.01, y = nrow(df.plot2)+1, hjust = 0, 
+#             check_overlap = TRUE, size = text.size/.pt, color = cols['FD']) +
+#   geom_text(label = '\U2190 Favours Laboratory', x = -0.01, y = nrow(df.plot2)+1, hjust = 1, 
+#             check_overlap = TRUE, size = text.size/.pt, color = cols['AMTI']) +
+#   coord_cartesian(clip = 'off') +
+#   scale_x_continuous(breaks = pretty_breaks(6), limits = c(-0.3,0.3)) +
+#   xlab('ICC mean difference \UB1 1SD') +
+#   theme_minimal() +
+#   theme(
+#     plot.margin = margin(t = 1, unit = 'lines'),
+#     panel.grid.minor = element_blank(),
+#     axis.text = element_text(size = text.size), 
+#     axis.title = element_text(size = title.size), 
+#     axis.title.y = element_blank(),
+#     axis.line = element_line(linewidth = 0.3),
+#     axis.ticks.x = element_line(linewidth = 0.3))
+
+
+p1 + p2 + plot_layout(width = c(0.5, 0.5)) + plot_annotation(tag_levels = 'A') & 
+  theme(plot.tag = element_text(size = title.size))
+
+ggsave('figure4_reliability_comparison.tiff', dpi = 800, width = 9, height = 4, units = 'cm', scale = 2.7)
+
+# Paper summary stats
+cor(df.reliability$ICC_FD, df.reliability$ICC_AMTI, use = "na.or.complete")^2
+
+df.reliability %>% 
+  na.omit %>% 
+  mutate(abs_diff = abs(ICC_FD - ICC_AMTI)) %>%
+  summarise(median = median(abs_diff),
+            sd = sd(abs_diff)) %>% 
+  arrange(median)
+
+
+
+```
+
+```{r MANUSCRIPT - FORCE TIME SERIES, eval=FALSE, include=FALSE}
+
+data.nested <- left_join(
+  GRF.data %>% group_nest(test_type, .key = 'data_GRF'),
+  discrete.data %>% group_nest(test_type, .key = 'data_discrete'),
+  by = 'test_type') %>% 
+  filter(!(test_type %in% c('Quiet Stand','Single Leg Range of Stability','Shoulder ISO-Y','Shoulder ISO-T'))) %>% 
+  mutate(test_type = factor(test_type, levels = task.order)) %>% 
+  arrange(test_type)
+
+plot.list <- list()
+i = 1
+for(i in 1:nrow(data.nested)){
+  
+  ##### Time series #####
+  
+  if(F){
+  ggplot(data.nested$data_GRF[[i]] %>% filter(athlete == 'Erin Clark')) + 
+    aes(x = time_normalised, y = force, color = device, linetype = device) +
+    facet_grid(rows = vars(day, rep), cols = vars(side))  +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = cols)
+  }
+  
+  df.GRF <- data.nested$data_GRF[[i]] %>% 
+    select(athlete, device, day, side, rep, time_normalised, force) %>% 
+    pivot_wider(names_from = device, values_from = force) %>% 
+    group_by(day, athlete, side, rep) %>% 
+    mutate(RMSE = sqrt(mean((AMTI - FD) ^ 2)),
+           NRMSE = RMSE/max(AMTI)*100) %>% 
+    ungroup %>% 
+    mutate(percentile = percent_rank(RMSE),
+           median_diff = abs(percentile - 0.5)) %>% 
+    mutate(closest_percentile = case_when(
+      percentile == min(percentile, na.rm = T) ~ 'Best trial',
+      median_diff == min(median_diff, na.rm = T) ~ 'Median trial',
+      percentile == max(percentile, na.rm = T) ~ 'Worst trial')) %>%
+    mutate(closest_percentile = factor(closest_percentile, levels = c('Best trial', 'Median trial', 'Worst trial'))) %>% 
+    na.omit() 
+  
+  device.list <- c('FD' = 'ForceDecks', 'AMTI' = 'Laboratory')
+  
+  df.plot.GRF <- df.GRF %>% 
+    select(time_normalised, AMTI, FD, closest_percentile, RMSE, NRMSE) %>% 
+    pivot_longer(c(AMTI, FD), names_to = 'device') %>% 
+    mutate(device = str_replace_all(device, device.list) %>% factor(levels = device.list)) %>% 
+    mutate(time_normalised_scaled = scales::rescale(time_normalised, c(0,1)))
+  
+  p1 <- ggplot(df.plot.GRF) + aes(x = time_normalised_scaled, y = value, color = device, linetype = device) +
+    facet_wrap(vars(closest_percentile), nrow = 1) +
+    geom_line(linewidth = 0.6) +
+    geom_text(data = df.plot.GRF %>% filter(time_normalised == 1 & device == 'ForceDecks'), inherit.aes = F, 
+              aes(label = paste0('RMSE = ', round(RMSE,0), ' N (', round(NRMSE,1), '%)')), 
+              x = 0.5, y = Inf, hjust = 0.5, vjust = 1.1, size = (text.size)/.pt, alpha = 0.8) +
+    scale_x_continuous(breaks = pretty_breaks(5), labels = percent_format()) +
+    scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(5), limits = c(min(df.plot.GRF$value), max(df.plot.GRF$value)*1.1)) +
+    scale_linetype_manual(values = c('Laboratory' = 'longdash', 'ForceDecks' = 'solid')) +
+    scale_color_manual(values = cols) +
+    ylab(str_wrap(data.nested$test_type[[i]],10)) +
+    xlab('Time') +
+    theme_classic() +
+    theme(strip.background = element_blank(),
+          strip.text = element_blank(),
+          text = element_text(size = text.size),
+          axis.title = element_blank(),
+          axis.title.y = element_text(size = text.size, angle = 0, vjust = 0.5),
+          axis.text = element_text(size = text.size),
+          axis.line.x = element_line(linewidth = 0.3),
+          legend.position = 'none',
+          legend.text = element_text(size = text.size),
+          legend.title = element_blank())
+  
+  if(i == 1){
+    p1 <- p1 + theme(
+      plot.margin = margin(t = 25),
+      legend.position = c(-0.1,1.3),
+      strip.text = element_text(size = text.size+2, margin = margin(t = 8, b = 8)))
+    
+  }
+  
+  plot.list[[length(plot.list) + 1]] <- p1
+  
+  
+  ##### Bland-Altman #####
+  df.discrete <- data.nested$data_discrete[[i]] %>% 
+    pivot_longer(-c(athlete,device, day, side, rep), names_to = 'metric') %>% 
+    pivot_wider(names_from = device) %>% 
+    separate(metric, into = c('metric', 'variable'), sep  ='_') %>% 
+    filter(metric == 'mean' & variable == 'force') %>% 
+    mutate(differences = FD - AMTI,
+           means = (FD + AMTI)/2) %>% 
+    na.omit()
+  
+  df.discrete %>% arrange(desc(abs(differences))) %>% mutate(trial = paste(athlete, data.nested$test_type[[i]], day, side, rep)) %>% pull(trial)
+  
+  df.stats <- rmba(data = df.discrete,
+       measure_one_col = 'AMTI',
+       measure_two_col = "FD",
+       condition_col = "side",
+       id_col = "athlete")
+  
+  y.max = max(abs(df.discrete$differences))
+  x.min = min(df.discrete$means)*0.97
+  x.max = max(df.discrete$means)*1.03
+  
+  p2 <- ggplot(df.discrete) + aes(x = means, differences) +
+    facet_wrap(vars('Agreement between systems')) +
+    geom_point(color = '#468B97', alpha = 0.8, size = 1.5) +
+    #geom_point(aes(color = leg), alpha = 0.8, size = 1.5) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = df.stats$upper_agreement_limit, linetype = 'longdash', linewidth = 0.5) +
+    geom_hline(yintercept = df.stats$lower_agreement_limit, linetype = 'longdash', linewidth = 0.5) +
+    geom_hline(yintercept = df.stats$bias, color = '#EF6262', linewidth = 0.5) +
+    coord_cartesian(clip = 'off') +
+    annotate('text', label = 'Upper LOA', x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.0f',df.stats$upper_agreement_limit),' N'), x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.0f',df.stats$lower_agreement_limit), ' N'), x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(sprintf('%.0f',df.stats$bias), ' N'), x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = 1.4, size = text.size/.pt) +
+    xlab('Average of ForceDecks & Laboratory (N)') +
+    ylab('ForceDecks - Laboratory (N)') +
+    scale_x_continuous(breaks = pretty_breaks(5), expand = c(0,0), limits = c(x.min,x.max)) +
+    scale_y_continuous(breaks = pretty_breaks(8)) +
+    theme_classic() +
+    theme(plot.margin = margin(r = 50),
+          panel.grid = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_text(size = text.size-1),
+          axis.line = element_line(linewidth = 0.3),
+          plot.title = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          legend.position = 'none')
+  
+    # if(i == 1){
+    # p2 <- p2 + theme(
+    #   strip.text = element_text(size = text.size+2))
+    # }
+  
+  plot.list[[length(plot.list) + 1]] <- p2
+  
+}
+
+wrap_plots(plot.list) + plot_layout(ncol = 2, widths = c(7, 3))
+
+ggsave('figure1_GRF_timeseries.tiff', dpi = 600, width = 18, height = 20, units = 'cm', scale = 2)
+
+# Results summary
+
+
+
+```
+
+```{r MANUSCRIPT - COP TIME SERIES, eval=FALSE, include=FALSE}
+
+# Pre-process COP timeseries
+TS <- GRF.data %>% 
+  select(-force) %>% 
+  filter(test_type %in% c('Quiet Stand', 'Single Leg Range of Stability')) %>% 
+  pivot_wider(names_from = device, values_from = c(COPX,COPY)) %>% 
+  group_by(test_type, day, athlete, side, rep) %>% 
+  mutate(COPX_RMSE = sqrt(mean((COPX_AMTI - COPX_FD) ^ 2, na.rm = T)),
+         COPY_RMSE = sqrt(mean((COPY_AMTI - COPY_FD) ^ 2, na.rm = T)),
+         COPX_NRMSE = COPX_RMSE/max(COPX_AMTI)*100,
+         COPY_NRMSE = COPY_RMSE/max(COPY_AMTI)*100,
+         RMSE = COPX_RMSE + COPY_RMSE) %>%
+  group_by(test_type) %>% 
+  mutate(percentile = percent_rank(RMSE),
+         median_diff = abs(percentile - 0.5)) %>% 
+  mutate(closest_percentile = case_when(
+    percentile == min(percentile, na.rm = T) ~ 'Best trial',
+    median_diff == min(median_diff, na.rm = T) ~ 'Median trial',
+    percentile == max(percentile, na.rm = T) ~ 'Worst trial')) %>%
+  mutate(closest_percentile = factor(closest_percentile, levels = c('Best trial', 'Median trial', 'Worst trial'))) %>% 
+  ungroup() %>% 
+  na.omit() %>% 
+  select(test_type, time_normalised, COPX_AMTI, COPX_FD, COPY_AMTI, COPY_FD, closest_percentile, 
+         COPX_RMSE, COPY_RMSE, COPX_NRMSE, COPY_NRMSE) %>% 
+  pivot_longer(c(COPX_AMTI, COPX_FD, COPY_AMTI, COPY_FD, COPX_RMSE, COPY_RMSE, COPX_NRMSE, COPY_NRMSE), names_to = c('axis', 'device'), names_sep = '_') %>% 
+  pivot_wider(names_from = device) %>% 
+  pivot_longer(c(AMTI, FD), names_to = 'device') %>% 
+  group_nest(test_type, axis, .key = 'data_GRF')
+
+# Pre-process COP discrete (Bland Altman)
+BA <- discrete.data %>% 
+    filter(test_type %in% c('Quiet Stand', 'Single Leg Range of Stability')) %>% 
+    pivot_longer(-c(athlete, test_type, device, day, side, rep), names_to = 'metric') %>% 
+    pivot_wider(names_from = device) %>% 
+    separate(metric, into = c('metric', 'axis_leg'), sep  ='_') %>% 
+    separate(axis_leg, into = c('axis', 'leg'), sep  =' ') %>% 
+    filter(metric == 'mean', axis %in% c('COPX','COPY')) %>% 
+    mutate(differences = FD - AMTI,
+           means = (FD + AMTI)/2) %>% 
+    group_nest(test_type, axis) %>% 
+    mutate(BA = map2(data, test_type, ~rmba(data = .x,
+       measure_one_col = 'AMTI',
+       measure_two_col = "FD",
+       condition_col = ifelse(.y == 'Quiet Stand', 'side', '1'),
+       id_col = "athlete"))) %>%  
+    mutate(data_discrete = map(data, ~tibble(means = .x$means, differences = .x$differences))) %>% 
+    select(-data)
+
+if(F){
+  ggplot(GRF.data %>% 
+           filter(athlete == 'Claire Crossley FD' & test_type == 'Quiet Stand') %>% 
+           select(-force) %>% 
+           pivot_longer(c(COPX,COPY))) + 
+    aes(x = time_normalised, y = value, color = device, linetype = device) +
+    facet_grid(rows = vars(day, rep), cols = vars(name, side))  +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = cols)
+}
+
+# Combine nested data frames
+device.list <- c('FD' = 'ForceDecks', 'AMTI' = 'Laboratory')
+axis.list <- c('COPY' = 'Anterior-posterior (mm)', 'COPX' = 'Medial-lateral (mm)')
+
+data.nested <- left_join(BA, TS, by = c('test_type','axis')) %>% 
+  mutate(test_type = factor(test_type, levels = task.order)) %>% 
+  mutate(axis = str_replace_all(axis, axis.list) %>% factor(levels = axis.list)) %>% 
+  arrange(test_type, axis)
+ 
+i = 1
+plot.list <- list()
+for(i in 1:nrow(data.nested)){
+  
+  ##### Time-series #####
+  df.plot.TS <- data.nested$data_GRF[[i]] %>% 
+    mutate(device = str_replace_all(device, device.list) %>% factor(levels = device.list)) %>% 
+    mutate(time_normalised_scaled = scales::rescale(time_normalised, c(0,1)))
+  
+    y.min.TS = data.nested %>% filter(test_type == data.nested$test_type[[i]]) %>% unnest(data_GRF) %>% pull(value) %>% min()
+    y.max.TS = data.nested %>% filter(test_type == data.nested$test_type[[i]]) %>% unnest(data_GRF) %>% pull(value) %>% max()
+  
+    p1 <- ggplot(df.plot.TS) + aes(x = time_normalised_scaled, y = value) +
+      facet_wrap(vars(closest_percentile)) +
+      geom_line(linewidth = 0.6, aes(color = device, linetype = device)) +
+      geom_text(data = df.plot.TS %>% filter(time_normalised == 1 & device == 'ForceDecks'), inherit.aes = F, 
+                aes(label = paste0('RMSE = ', round(RMSE,1), ' mm (', round(NRMSE,1),'%)')), 
+                x = 0.5, y = Inf, hjust = 0.5, vjust = 1.1, size = (text.size)/.pt, alpha = 0.8) +
+      scale_linetype_manual(values = c('Laboratory' = 'longdash', 'ForceDecks' = 'solid')) +
+      scale_x_continuous(breaks = pretty_breaks(5), labels = percent_format()) +
+      scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(5), limits = c(y.min.TS, y.max.TS*1.15)) +
+      scale_color_manual(values = cols) +
+      coord_cartesian(clip = 'off') + 
+      ylab(str_wrap(data.nested$axis[[i]], 10)) +
+      xlab('Time') +
+      theme_classic() +
+      theme(strip.background = element_blank(),
+            strip.text = element_blank(),
+            text = element_text(size = text.size),
+            axis.title = element_blank(),
+            axis.title.y = element_text(size = text.size, angle = 0, vjust = 0.5),
+            axis.text = element_text(size = text.size),
+            axis.line.x = element_line(linewidth = 0.3),
+            legend.text = element_text(size = text.size),
+            legend.title = element_blank(),
+            legend.background = element_rect(fill = 'transparent', color = 'transparent'),
+            legend.position = 'none',
+            plot.title = element_blank())
+    
+    if(i == 1){
+      p1 <- p1 + theme(
+        plot.margin = margin(t = 25),
+        legend.position = c(-0.1,1.35))
+    }
+    
+    if(data.nested$axis[[i]] == 'Anterior-posterior (mm)'){
+      p1 <- p1 + geom_text(data = tibble(label = c(str_wrap(data.nested$test_type[[i]],18),NA,NA), 
+                                         closest_percentile = c('Best trial', 'Median trial', 'Worst trial')),
+                           x = -0.35, y = Inf, aes(x=x, y=y, label=label), hjust = 0.6, vjust = 0.4, size = (text.size+1)/.pt) +
+        theme(
+        axis.line.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = text.size+2, margin = margin(t = 8, b = 8)))
+    }
+    
+    p1
+    plot.list[[length(plot.list) + 1]] <- p1
+  
+  ##### Bland-Altman #####
+  df.plot.TS <- data.nested$data_discrete[[i]]
+  df.stats <-  data.nested$BA[[i]]
+  
+  y.max = max(abs(df.plot.TS$differences))
+  x.min = min(df.plot.TS$means)*0.97
+  x.max = max(df.plot.TS$means)*1.03
+  
+  p2 <- ggplot(df.plot.TS) + aes(x = means, differences) +
+    facet_wrap(vars('Agreement between systems')) +
+    geom_point(color = '#468B97', alpha = 0.8, size = 1.5) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = df.stats$upper_agreement_limit, linetype = 'longdash', linewidth = 0.5) +
+    geom_hline(yintercept = df.stats$lower_agreement_limit, linetype = 'longdash', linewidth = 0.5) +
+    geom_hline(yintercept = df.stats$bias, color = '#EF6262', linewidth = 0.5) +
+    coord_cartesian(clip = 'off') +
+    annotate('text', label = 'Upper LOA', x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = -0.4, size = (text.size-1)/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f',df.stats$upper_agreement_limit),' mm'), x = x.max, y = df.stats$upper_agreement_limit,
+             hjust = 0, vjust = 1.4, size = (text.size-1)/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = -0.4, size = (text.size-1)/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f',df.stats$lower_agreement_limit), ' mm'), x = x.max, y = df.stats$lower_agreement_limit,
+             hjust = 0, vjust = 1.4, size = (text.size-1)/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = -0.4, size = (text.size-1)/.pt) +
+    annotate('text', label = paste0(sprintf('%.1f',df.stats$bias), ' mm'), x = x.max, y = df.stats$bias,
+             hjust = 0, vjust = 1.4, size = (text.size-1)/.pt) +
+    xlab('Average of ForceDecks & Laboratory (mm)') +
+    ylab('ForceDecks - Laboratory (m)') +
+    scale_x_continuous(breaks = pretty_breaks(5), limits = c(x.min, x.max), expand = c(0,0)) +
+    scale_y_continuous(breaks = pretty_breaks(8)) +
+    theme_classic() +
+    theme(plot.margin = margin(r = 50),
+          panel.grid = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_text(size = text.size-1),
+          axis.line = element_line(linewidth = 0.3),
+          plot.title = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank())
+  
+  # if(i == 1){
+  #   p2 <- p2 + theme(
+  #     strip.text = element_text(size = text.size+2))
+  # }
+  
+  if(data.nested$axis[[i]] == 'Anterior-posterior (mm)'){
+    p2 <- p2 + theme(
+    )
+  }
+    
+  
+  plot.list[[length(plot.list) + 1]] <- p2 
+  
+}
+
+wrap_plots(plot.list) + plot_layout(ncol = 2, widths = c(7, 3))
+
+ggsave('figure2_COP_timeseries.tiff', dpi = 800, width = 18, height = 10, units = 'cm', scale = 2)
+
+
+```
+
+```{r MANUSCRIPT - EXPERIMENTING, eval=FALSE, include=FALSE}
+# Mean of the differences
+GRF.data %>% 
+  pivot_longer(c(force, COPX, COPY), names_to = 'variable') %>% 
+  pivot_wider(names_from = device) %>% 
+  mutate(diff = FD - AMTI) %>% 
+  group_by(athlete, test_type, day, side, rep, variable) %>% 
+  summarise(n = length(diff),
+            mean_diff = mean(diff))
+
+# Differences of the mean
+GRF.data %>% 
+  pivot_longer(c(force, COPX, COPY), names_to = 'variable') %>% 
+  group_by(athlete, test_type, device, day, side, rep, variable) %>% 
+  summarise(mean = mean(value)) %>% 
+  pivot_wider(names_from = device, values_from = mean) %>% 
+  mutate(diff_mean = FD - AMTI)
+
+# GIVE THE EXACT SAME NUMBERS #
+
+
+
+ ##### Bland-Altman #####
+df.data <- GRF.data %>% 
+  filter(test_type == 'Countermovement Jump') %>% 
+  select(-test_type, -COPX, -COPY) 
+
+df.ensemble <- df.data %>% 
+  group_by(device, time_normalised, athlete) %>% 
+  summarise(participant_mean = mean(force)) %>% 
+  summarise(mean = mean(participant_mean))
+
+# 1) Taking the mean of the time series
+df.stats <- df.data %>% 
+  group_by(athlete, day, side, rep, device) %>% 
+  summarise(mean_force = mean(force), .groups = 'drop') %>% 
+  pivot_wider(names_from = device, values_from = mean_force)
+
+BA <- blandr::blandr.statistics(df.BA.stats$FD, df.BA.stats$AMTI)
+
+df.plot <- tibble(difference = BA$differences,
+                  average = BA$means)
+
+  y.max = max(abs(BA$differences))
+  x.min = min(BA$means)*0.9
+  x.max = max(BA$means)*1.1
+  
+ ggplot(df.plot) + aes(x = average, y = difference) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = BA$upperLOA, linetype = 'longdash') +
+    geom_hline(yintercept = BA$lowerLOA, linetype = 'longdash') +
+    geom_hline(yintercept = BA$bias, color = cols['FD'], linewidth = 1) +
+    geom_point(color = col.gradient[1], alpha = 0.7, size = 2) +
+    annotate('text', label = 'Upper LOA', x = x.max, y = BA$upperLOA,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$upperLOA,0),' mm'), x = x.max, y = BA$upperLOA,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = BA$lowerLOA,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$lowerLOA, 0), ' mm'), x = x.max, y = BA$lowerLOA,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = BA$bias,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$bias,0), ' mm'), x = x.max, y = BA$bias,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    xlab('Average (N)') +
+    ylab('Difference (N)') +
+    scale_x_continuous(breaks = pretty_breaks(5), limits = c(x.min, x.max), expand = c(0,0)) +
+    scale_y_continuous(breaks = pretty_breaks(10), limits = c(-y.max, y.max)) +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_blank(),
+          plot.title = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank())
+
+ # 1) Inlcuding all data points
+ df.BA.stats <- df.data %>% 
+  pivot_wider(names_from = device, values_from = force)
+  
+BA <- blandr::blandr.statistics(df.BA.stats$FD, df.BA.stats$AMTI)
+
+df.plot <- tibble(time_normalised = df.BA.stats$time_normalised,
+                  difference = BA$differences,
+                  average = BA$means)
+ 
+  y.max = max(abs(BA$differences))
+  x.min = min(BA$means)*0.9
+  x.max = max(BA$means)*1.1
+  
+ ggplot(df.plot) + aes(x = average, y = difference) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = BA$upperLOA, linetype = 'longdash') +
+    geom_hline(yintercept = BA$lowerLOA, linetype = 'longdash') +
+    geom_hline(yintercept = BA$bias, color = cols['FD'], linewidth = 1) +
+    geom_point(color = col.gradient[1], alpha = 0.7, size = 2) +
+   annotate('text', label = 'Upper LOA', x = x.max, y = BA$upperLOA,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$upperLOA,0),' mm'), x = x.max, y = BA$upperLOA,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = BA$lowerLOA,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$lowerLOA, 0), ' mm'), x = x.max, y = BA$lowerLOA,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = BA$bias,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$bias,0), ' mm'), x = x.max, y = BA$bias,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    xlab('Average (N)') +
+    ylab('Difference (N)') +
+    scale_x_continuous(breaks = pretty_breaks(5), limits = c(x.min, x.max), expand = c(0,0)) +
+    scale_y_continuous(breaks = pretty_breaks(10), limits = c(-y.max, y.max)) +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_blank(),
+          plot.title = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank())
+ 
+  y.max = max(abs(BA$differences))
+  x.min = 0
+  x.max = 500
+ 
+  ggplot(df.plot) + aes(x = time_normalised, y = difference) +
+    geom_hline(yintercept = 0) +
+    geom_hline(yintercept = BA$upperLOA, linetype = 'longdash') +
+    geom_hline(yintercept = BA$lowerLOA, linetype = 'longdash') +
+    geom_hline(yintercept = BA$bias, color = cols['FD'], linewidth = 1) +
+    geom_point(color = col.gradient[1], alpha = 0.7, size = 2) +
+   annotate('text', label = 'Upper LOA', x = x.max, y = BA$upperLOA,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$upperLOA,0),' mm'), x = x.max, y = BA$upperLOA,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Lower LOA', x = x.max, y = BA$lowerLOA,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$lowerLOA, 0), ' mm'), x = x.max, y = BA$lowerLOA,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    annotate('text', label = 'Mean bias', x = x.max, y = BA$bias,
+             hjust = 1, vjust = -0.4, size = text.size/.pt) +
+    annotate('text', label = paste0(round(BA$bias,0), ' mm'), x = x.max, y = BA$bias,
+             hjust = 1, vjust = 1.4, size = text.size/.pt) +
+    xlab('Average (N)') +
+    ylab('Difference (N)') +
+    scale_x_continuous(breaks = pretty_breaks(5), limits = c(x.min, x.max), expand = c(0,0)) +
+    scale_y_continuous(breaks = pretty_breaks(10), limits = c(-y.max, y.max)) +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
+          axis.title = element_blank(),
+          plot.title = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank())
+ 
+```
+
+<div class="credits">
+<p class ='tight' style="color: white;">Report by Tyler Collings</p>
+<img src="images/griffith_logo.png" alt="Griffith Logo" class="griffith_logo">
+</div>
+
+Study information
+=====================================
+
+Row {data-height=350}
+-------------------------------------
+<div style="text-align: center;">
+<strong style="font-size: 20px;">Concurrent validity and test-retest reliability of VALD ForceDecks strength, balance, and movement assessment tasks</strong>
+
+Tyler J. Collings^1,2^ PhD , Yuri Lopes Lima^1,2^ MSc, Benjamin Dutallis^1,2^ AEP, Matthew N. Bourne^1,2^ PhD 
+
+^1^School of Health Sciences and Social Work, Griffith University, Gold Coast Campus, QLD, Australia.  
+^2^Griffith Centre of Biomedical and Rehabilitation Engineering (GCORE), Menzies Health Institute Queensland, Australia. 
+
+<img src="images/GU_logo.png" alt="Griffith University logo" height="48"/>
+<img src="images/GCORE_logo.png" alt="GCORE logo" height="48"/>
+
+<b>Corresponding author:</b> Dr Tyler Collings  
+1 Parklands Drive, Griffith University, Gold Coast, Southport 4215, QLD, Australia.  
+Email: <a href="mailto:t.collings@griffith.edu.au">t.collings@griffith.edu.au</a>  
+
+<b>Funding Declaration:</b> Funding was provided by VALD to cover the cost of data collection, analysis, and reporting of data. Data analysis was performed independently of VALD.
+</div>  
+  
+Row
+-------------------------------------
+### Participants
+**Inclusion/exclusion criteria**  
+Participants included 15 healthy individuals recruited from a population of Australian University students. To be included, participants were required to be aged between 18-40 years, physically active multiple times per week (30+ minutes), and free from any current injuries or neurological conditions that may influence the ability to perform tests, any major injuries in the previous 1-2 months that may influence test results, and any current shoulder pain or instability, or lower back pain. All participants were encouraged to refrain from performing resistance training or intense physical activity on the day before testing.
+
+**Ethics**  
+All participants provided written informed consent prior to data collection. Study ethics were approved by the Griffith University Human Research Ethics Committee (GU reference: 2023/208). 
+
+**Participant characteristics**  
+Anthropometric measures for 16 participants. 10/16 (63%) participants were male and 6/16 (38%) were female. All participants except 1 were right-leg dominant.
+```{r, fig.align='left'}
+gt(participant.table, rowname_col = 'name') %>% 
+  fmt_number(
+    decimals = 1) %>% 
+  cols_align(
+    align = 'center') %>% 
+  tab_options(
+    table.font.size = text.size+5
+  )
+
+```
+
+### Equipment setup
+Data were collected at the Griffith University motion laboratory, Gold Coast, Australia.  
+
+**Force plates**  
+Force plate data were acquired from the ForceDecks (FDLite, V.2, VALD, Brisbane, Australia) positioned on top of a tri-axial force plate embedded in the laboratory floor (AMTI, MA, United States). This arrangement enabled vertical ground reaction forces and centre of pressure to be measured from the ForceDecks as well as gold-standard laboratory-quality force plates simultaneously. Both force plates recorded data at 1000 Hz.
+ 
+Before commencing testing, a weighted plate was used to determine the agreement in vertical ground reaction force between systems under static conditions, indicating a <1-2N difference between force plates. 
+
+The ForceDecks were operated using the iOS application (V.1.8.9) on an iPad (Apple, CA, United States) and the laboratory force plates were connected to VALD ForceDecks software for Windows (Microsoft, WA, United States).  
+
+**Force plate arrangement**  
+<img src="images/forceplate_setup.png" alt="Force plate setup" width="350"/>
+
+### Data collection
+Participants attended two identically structured testing sessions approximately 7 days apart. A 5-minute warm-up was performed on a stationary cycle ergometry at a self-selected moderate intensity to increase core-body temperature and dynamic stretching. 
+
+**Tasks**  
+12 standard tests available in the ForceDecks software were performed in a pre-defined order:   
+1) Quiet Stand  
+2) Single Leg Range of Stability  
+3) Squat Assessment  
+4) Countermovement Jump  
+5) Squat Jump  
+6) Drop Jump  
+7) Hop Test  
+8) Single Leg Hop Test  
+9) Shoulder ISO-I  
+10) Shoulder ISO-Y  
+11) Shoulder ISO-T  
+12) Isometric Mid-Thigh Pull  
+
+**Task protocols**  
+All tests were performed in accordance with the protocol and instructions outlined on the VALD Knowledge Base website. Participant's were shown how to perform each test and were given a chance to practice until they demonstrated satisfactory performance. Both force plates were ‘zeroed’ before beginning each trial. The participants weight was recorded in a stationary and relaxed standing position. Each repetition began and ended with 2-3 seconds of quiet standing. A total of 3 repetitions of each test were performed, with the unilateral task performed with 3 trials on the right followed by the left leg. Approximately 20-30 seconds rest was provided between repetitions of a task and 1-2 minutes rest between tasks.
+
+Row
+-------------------------------------
+### Data analysis
+Force-time data from both force plates were automatically processed using the ForceDecks application for Windows, including the identification of movement phases and calculation of metrics. Trials were inspected for any errors in participant weighing or trial auto-detection and were corrected using the software re-analyse tool where possible. All force plate metrics were exported for analysis in R Studio (R version 4.3.0).  
+
+**Reliabilty**  
+Test-retest reliability of metrics between days (1 week apart) was assessed with intraclass coefficients (ICC) using a two-way random effects model, absolute agreement, and multiple measurements (ICC2,k, where k is the mean of 3 repetitions). ICC values were interpreted as less than 0.5 = poor reliability, 0.5-0.75 = moderate reliability, 0.75-0.9 = good reliability, and values greater than 0.90 indicated excellent reliability <a href="#ref">[1]</a>. Measurement variability or consistency within a subject was quantified using standard error of measurement (SEM), where SEM=SD√(1-ICC) [2]. The minimal detectable change (MDC) or smallest real difference between two testing time points was calculated using the SEM and the 95% confidence interval for detecting a change in scores beyond 0, where MDC=1.96 × √2  ×SEM <a href="#ref">[2]</a>. 
+
+**Validity**   
+To enable concurrent validation of ground reaction forces and centre of pressure independent of weighing and movement phase detection, time series data over the entire movement were cross-correlated and time-adjusted. Due to differences in origin location between force plates, the centre of pressure was centred around 0 by subtracting the mean of the time series data for both force plate systems. <strong>Note:</strong> The stacked arrangement of force plates is not a perfect method for assessing concurrent validity with some discrepancies in force/centre of pressure occurring during impact or at extreme ranges. A small number of trials were removed due to errors created by stacking forceplates.     
+
+The validity of metrics was assessed using the percentage difference compared to the laboratory forceplates. Where <5% was interpreted as excellent validity, 5-10% was good validity, 10-20% was moderate validity, and 20% + was poor validity. Bland-Altman 95% limits of agreement for metrics are also presented. Validity of force and centre of pressure data was assessed between force plates over the duration of the movement using root mean square error (RMSE). To visualise the agreement between forceplates, individual trials ranging from the worst (lowest RMSE), and average (mean RMSE), to the best (highest RMSE) were displayed. The overall agreement for all trials was assessed using Bland-Altman plots for the mean ground reaction force, with mean bias and limits of agreement between force plates <a href="#ref">[3]</a>.  
+
+Row
+-------------------------------------
+
+### References
+<p id="ref">
+1.	Koo, T.K. and M.Y. Li, A guideline of selecting and reporting intraclass correlation coefficients for reliability research. Journal of chiropractic medicine, 2016. 15(2): p. 155-163. DOI: <a href="https://doi.org/10.1016/j.jcm.2016.02.012">https://doi.org/10.1016/j.jcm.2016.02.012</a>  
+
+2.	Beckerman, H., et al., Smallest real difference, a link between reproducibility and responsiveness. Quality of Life Research, 2001. 10: p. 571-578. DOI: <a href="https://doi.org/10.1023/A:1013138911638">https://doi.org/10.1023/A:1013138911638</a> 
+</p>  
+
+3. Bland, J. M., & Altman, D. (1986). Statistical methods for assessing agreement between two methods of clinical measurement. The lancet, 327(8476), 307-310. DOI: <a href="https://doi.org/10.1016/S0140-6736(86)90837-8">https://doi.org/10.1016/S0140-6736(86)90837-8</a>   
+
+Countermovement jump
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.7}
+knitr::include_graphics("images/countermovement_jump.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Countermovement Jump")
+```
+
+### Validity (agreement with lab forceplate)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Countermovement Jump")
+```
+
+### Reliability compared to lab forceplate
+```{r, fig.height=3.5}
+summarySwarm(reliability_validity, "Countermovement Jump")
+```
+
+Row {data-height=370}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Countermovement Jump")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Countermovement Jump", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Countermovement Jump"]]}
+htmltools::div(style='overflow-x: scroll', metricTable(reliability_validity, "Countermovement Jump"))
+```
+
+Squat Jump
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/squat_jump.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Squat Jump")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Squat Jump")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Squat Jump") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Squat Jump")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Squat Jump", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Squat Jump"]]}
+metricTable(reliability_validity, "Squat Jump")
+```
+
+
+Drop Jump
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/drop_vertical_jump.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Drop Jump")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Drop Jump")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Drop Jump") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Drop Jump")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Drop Jump", 'mean')
+
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Drop Jump"]]}
+metricTable(reliability_validity, "Drop Jump")
+```
+
+
+Hop Test
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/hop_test.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Hop Test")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Hop Test")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Hop Test") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Hop Test")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Hop Test", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Hop Test"]]}
+metricTable(reliability_validity, "Hop Test")
+```
+
+
+Single Leg Hop Test
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/single_leg_hop_test.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Single Leg Hop Test")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Single Leg Hop Test")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Single Leg Hop Test") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Single Leg Hop Test")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Single Leg Hop Test", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Single Leg Hop Test"]]}
+metricTable(reliability_validity, "Single Leg Hop Test")
+```
+
+
+Isometric Mid-Thigh Pull
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/isometric_mid_thigh_pull.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Isometric Mid-Thigh Pull")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Isometric Mid-Thigh Pull") 
+```
+
+Row {data-height=500}
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Isometric Mid-Thigh Pull"]]}
+metricTable(reliability_validity, "Isometric Mid-Thigh Pull") %>% 
+  cols_hide(c(PDiff_group, PDiff))
+```
+
+Shoulder ISO-I
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/shoulder_iso_i.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Shoulder ISO-I")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Shoulder ISO-I")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Shoulder ISO-I") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Shoulder ISO-I")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Shoulder ISO-I", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Shoulder ISO-I"]]}
+metricTable(reliability_validity, "Shoulder ISO-I")
+```
+
+Shoulder ISO-T
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/shoulder_iso_t.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Shoulder ISO-T")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Shoulder ISO-T")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Shoulder ISO-T") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Shoulder ISO-T")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Shoulder ISO-T", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Shoulder ISO-T"]]}
+metricTable(reliability_validity, "Shoulder ISO-T")
+```
+
+Shoulder ISO-Y
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/shoulder_iso_Y.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Shoulder ISO-Y")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Shoulder ISO-Y")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Shoulder ISO-Y") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Shoulder ISO-Y")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Shoulder ISO-Y", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Shoulder ISO-Y"]]}
+metricTable(reliability_validity, "Shoulder ISO-Y")
+```
+
+
+Squat Assessment
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/squat_assessment.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Squat Assessment")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Squat Assessment")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Squat Assessment") 
+```
+
+Row {data-height=380}
+-------------------------------------
+
+### Validity: time-series comparison between force plates
+```{r fig.height=3.2, fig.width=10}
+individualWaveformFigures(GRF.data, "Squat Assessment")
+```
+
+### Validity: Bland-Altman agreement between force plates
+```{r fig.height=3.2, fig.width=5}
+blandAltmanFigures(discrete.data,"Squat Assessment", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Squat Assessment"]]}
+metricTable(reliability_validity, "Squat Assessment")
+```
+
+
+Quiet Stand
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/quiet_stand.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Quiet Stand")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Quiet Stand")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Quiet Stand") 
+```
+
+Row {data-height=500}
+-------------------------------------
+
+### Centre of pressure Validity: comparison between force plates
+```{r fig.height=4.5, fig.width=10}
+individualCOPFigures(GRF.data, "Quiet Stand")
+```
+
+### Centre of pressure validity: agreement between force plates
+```{r fig.height=4.5, fig.width=5}
+blandAltmanCOPFigures(discrete.data,"Quiet Stand", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Quiet Stand"]]}
+metricTable(reliability_validity, "Quiet Stand")
+```
+
+
+Single Leg Range of Stability
+=====================================
+
+Row {data-height=250}
+-------------------------------------
+```{r echo=FALSE, fig.width=3.5}
+knitr::include_graphics("images/single_leg_range_of_stability.png")
+```
+
+### Reliability (repeatability between-days)
+```{r, fig.height=3.5}
+summaryReliabiltyBar(reliability_validity, "Single Leg Range of Stability")
+```
+
+### Validity (agreement with lab force plates)
+```{r, fig.height=3.5}
+summaryValidityBar(reliability_validity, "Single Leg Range of Stability")
+```
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3.5} 
+summarySwarm(reliability_validity, "Single Leg Range of Stability") 
+```
+
+Row {data-height=500}
+-------------------------------------
+
+### Centre of pressure Validity: comparison between force plates
+```{r fig.height=4.5, fig.width=10}
+individualCOPFigures(GRF.data, "Single Leg Range of Stability")
+```
+
+### Centre of pressure validity: agreement between force plates
+```{r fig.height=4.5, fig.width=5}
+blandAltmanCOPFigures(discrete.data,"Single Leg Range of Stability", 'mean')
+```
+
+Row
+-------------------------------------
+
+### Reliability & validity of metrics
+```{r fig.height=table.height[["Single Leg Range of Stability"]]}
+metricTable(reliability_validity, "Single Leg Range of Stability")
+```
+
