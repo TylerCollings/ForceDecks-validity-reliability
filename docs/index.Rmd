@@ -176,7 +176,7 @@ summaryReliabiltyBar <- function(data, select_test_type) {
   ggplot(df.plot) + aes(x = ICC_group_FD, fill = ICC_group_FD) + 
     geom_bar() +
     geom_text(aes(label = scales::percent(after_stat(count)/sum(after_stat(count)))), stat = 'count', 
-              vjust = -0.5, size = (text.size+6)/.pt) + 
+              vjust = -0.5, size = (text.size)/.pt) + 
     coord_cartesian(clip = 'off') +
     scale_x_discrete(drop = FALSE) +
     scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(8)) +
@@ -185,10 +185,10 @@ summaryReliabiltyBar <- function(data, select_test_type) {
     theme_classic() +
     theme(plot.margin = margin(t = 1.5, unit = 'lines'),
           legend.position = 'none',
-          text = element_text(size = text.size+6),
-          axis.text = element_text(size = text.size+6),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
           axis.text.x = ggtext::element_markdown(),
-          axis.title = element_text(size = title.size+6),
+          axis.title = element_text(size = title.size),
           axis.title.x = element_blank())
 }
 
@@ -209,7 +209,7 @@ summaryValidityBar <- function(data, select_test_type) {
   ggplot(df.plot) + aes(x = PDiff_group, fill = PDiff_group) + 
     geom_bar() +
     geom_text(aes(label = scales::percent(after_stat(count)/sum(after_stat(count)))), stat = 'count', 
-              vjust = -0.5, size = (text.size+6)/.pt) + 
+              vjust = -0.5, size = (text.size)/.pt) + 
     coord_cartesian(clip = 'off') +
     scale_x_discrete(drop = FALSE) +
     scale_y_continuous(expand = c(0,0), breaks = pretty_breaks(8)) +
@@ -218,10 +218,10 @@ summaryValidityBar <- function(data, select_test_type) {
     theme_classic() +
     theme(plot.margin = margin(t = 1.5, unit = 'lines'),
           legend.position = 'none',
-          text = element_text(size = text.size+6),
-          axis.text = element_text(size = text.size+6),
+          text = element_text(size = text.size),
+          axis.text = element_text(size = text.size),
           axis.text.x = ggtext::element_markdown(),
-          axis.title = element_text(size = title.size+6),
+          axis.title = element_text(size = title.size),
           axis.title.x = element_blank())
 }
 
@@ -258,9 +258,9 @@ summarySwarm <- function(data, select_test_type) {
     theme(
       plot.margin = margin(t = 1, unit = 'lines'),
       legend.position = 'none',
-      text = element_text(size = text.size+6),
-      axis.text = element_text(size = text.size+6),
-      axis.title = element_text(size = title.size+6),
+      text = element_text(size = text.size),
+      axis.text = element_text(size = text.size),
+      axis.title = element_text(size = title.size),
       axis.title.x = element_blank(),
       axis.ticks = element_blank())
   
@@ -633,7 +633,7 @@ blandAltmanCOPFigures <- function(data, select_test_type, select_metric) {
   
   }
   
-  wrap_plots(plot.list) + plot_layout(nrow = 2)
+  wrap_plots(plot.list) + plot_layout(nrow = 1)
   
 }
 ```
@@ -650,6 +650,9 @@ Row {data-height=350}
 -------------------------------------
 <div style="text-align: center;">
 <strong style="font-size: 20px;">Concurrent validity and test-retest reliability of VALD ForceDecks strength, balance, and movement assessment tasks</strong>
+
+Original Research published in Journal of Science and Medicine (May 2024)
+DOI: <a href="https://doi.org/10.1016/j.jsams.2024.04.014">https://doi.org/10.1016/j.jsams.2024.04.014</a>
 
 Tyler J. Collings^1,2^ PhD , Yuri Lopes Lima^1,2^ MSc, Benjamin Dutallis^1,2^ AEP, Matthew N. Bourne^1,2^ PhD 
 
@@ -670,7 +673,7 @@ Row
 -------------------------------------
 ### Participants
 **Inclusion/exclusion criteria**  
-Participants included 15 healthy individuals recruited from a population of Australian University students. To be included, participants were required to be aged between 18-40 years, physically active multiple times per week (30+ minutes), and free from any current injuries or neurological conditions that may influence the ability to perform tests, any major injuries in the previous 1-2 months that may influence test results, and any current shoulder pain or instability, or lower back pain. All participants were encouraged to refrain from performing resistance training or intense physical activity on the day before testing.
+Participants included 16 healthy individuals recruited from a population of Australian University students. To be included, participants were required to be aged between 18-40 years, physically active multiple times per week (30+ minutes), and free from any current injuries or neurological conditions that may influence the ability to perform tests, any major injuries in the previous 1-2 months that may influence test results, and any current shoulder pain or instability, or lower back pain. All participants were encouraged to refrain from performing resistance training or intense physical activity on the day before testing.
 
 **Ethics**  
 All participants provided written informed consent prior to data collection. Study ethics were approved by the Griffith University Human Research Ethics Committee (GU reference: 2023/208). 
@@ -751,28 +754,24 @@ Row
 Countermovement jump
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.7}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/countermovement_jump.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r, fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Countermovement Jump")
 ```
 
 ### Validity (agreement with lab forceplate)
-```{r, fig.height=3.5}
+```{r, fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Countermovement Jump")
 ```
 
-### Reliability compared to lab forceplate
-```{r, fig.height=3.5}
-summarySwarm(reliability_validity, "Countermovement Jump")
-```
-
-Row {data-height=370}
+Row {data-height=380}
 -------------------------------------
 
 ### Validity: time-series comparison between force plates
@@ -780,8 +779,16 @@ Row {data-height=370}
 individualWaveformFigures(GRF.data, "Countermovement Jump")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate
+```{r, fig.height=3, fig.width=5}
+summarySwarm(reliability_validity, "Countermovement Jump")
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r, fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Countermovement Jump", 'mean')
 ```
 
@@ -796,25 +803,21 @@ htmltools::div(style='overflow-x: scroll', metricTable(reliability_validity, "Co
 Squat Jump
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/squat_jump.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Squat Jump")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Squat Jump")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Squat Jump") 
 ```
 
 Row {data-height=380}
@@ -825,8 +828,16 @@ Row {data-height=380}
 individualWaveformFigures(GRF.data, "Squat Jump")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Squat Jump") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Squat Jump", 'mean')
 ```
 
@@ -842,25 +853,21 @@ metricTable(reliability_validity, "Squat Jump")
 Drop Jump
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/drop_vertical_jump.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Drop Jump")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Drop Jump")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Drop Jump") 
 ```
 
 Row {data-height=380}
@@ -871,8 +878,16 @@ Row {data-height=380}
 individualWaveformFigures(GRF.data, "Drop Jump")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Drop Jump") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Drop Jump", 'mean')
 
 ```
@@ -889,25 +904,21 @@ metricTable(reliability_validity, "Drop Jump")
 Hop Test
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/hop_test.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Hop Test")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Hop Test")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Hop Test") 
 ```
 
 Row {data-height=380}
@@ -918,8 +929,16 @@ Row {data-height=380}
 individualWaveformFigures(GRF.data, "Hop Test")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Hop Test") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Hop Test", 'mean')
 ```
 
@@ -935,25 +954,21 @@ metricTable(reliability_validity, "Hop Test")
 Single Leg Hop Test
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/single_leg_hop_test.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Single Leg Hop Test")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Single Leg Hop Test")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Single Leg Hop Test") 
 ```
 
 Row {data-height=380}
@@ -964,8 +979,16 @@ Row {data-height=380}
 individualWaveformFigures(GRF.data, "Single Leg Hop Test")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Single Leg Hop Test") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Single Leg Hop Test", 'mean')
 ```
 
@@ -981,19 +1004,20 @@ metricTable(reliability_validity, "Single Leg Hop Test")
 Isometric Mid-Thigh Pull
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/isometric_mid_thigh_pull.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Isometric Mid-Thigh Pull")
 ```
 
 ### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
+```{r,  fig.height=3, fig.width=5} 
 summarySwarm(reliability_validity, "Isometric Mid-Thigh Pull") 
 ```
 
@@ -1009,25 +1033,21 @@ metricTable(reliability_validity, "Isometric Mid-Thigh Pull") %>%
 Shoulder ISO-I
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/shoulder_iso_i.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Shoulder ISO-I")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Shoulder ISO-I")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Shoulder ISO-I") 
 ```
 
 Row {data-height=380}
@@ -1038,8 +1058,16 @@ Row {data-height=380}
 individualWaveformFigures(GRF.data, "Shoulder ISO-I")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Shoulder ISO-I") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Shoulder ISO-I", 'mean')
 ```
 
@@ -1054,25 +1082,21 @@ metricTable(reliability_validity, "Shoulder ISO-I")
 Shoulder ISO-T
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/shoulder_iso_t.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Shoulder ISO-T")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Shoulder ISO-T")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Shoulder ISO-T") 
 ```
 
 Row {data-height=380}
@@ -1081,6 +1105,14 @@ Row {data-height=380}
 ### Validity: time-series comparison between force plates
 ```{r fig.height=3.2, fig.width=10}
 individualWaveformFigures(GRF.data, "Shoulder ISO-T")
+```
+
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Shoulder ISO-T") 
 ```
 
 ### Validity: Bland-Altman agreement between force plates
@@ -1099,25 +1131,21 @@ metricTable(reliability_validity, "Shoulder ISO-T")
 Shoulder ISO-Y
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/shoulder_iso_Y.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Shoulder ISO-Y")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Shoulder ISO-Y")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Shoulder ISO-Y") 
 ```
 
 Row {data-height=380}
@@ -1128,8 +1156,16 @@ Row {data-height=380}
 individualWaveformFigures(GRF.data, "Shoulder ISO-Y")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Shoulder ISO-Y") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Shoulder ISO-Y", 'mean')
 ```
 
@@ -1145,37 +1181,42 @@ metricTable(reliability_validity, "Shoulder ISO-Y")
 Squat Assessment
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/squat_assessment.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Squat Assessment")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Squat Assessment")
 ```
 
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Squat Assessment") 
-```
 
 Row {data-height=380}
 -------------------------------------
 
 ### Validity: time-series comparison between force plates
-```{r fig.height=3.2, fig.width=10}
+```{r, fig.height=3.2, fig.width=10}
 individualWaveformFigures(GRF.data, "Squat Assessment")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=5} 
+summarySwarm(reliability_validity, "Squat Assessment") 
+```
+
 ### Validity: Bland-Altman agreement between force plates
-```{r fig.height=3.2, fig.width=5}
+```{r fig.height=3, fig.width=5}
 blandAltmanFigures(discrete.data,"Squat Assessment", 'mean')
 ```
 
@@ -1191,37 +1232,42 @@ metricTable(reliability_validity, "Squat Assessment")
 Quiet Stand
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/quiet_stand.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r, fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Quiet Stand")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r, fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Quiet Stand")
 ```
 
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Quiet Stand") 
-```
 
 Row {data-height=500}
 -------------------------------------
 
 ### Centre of pressure Validity: comparison between force plates
-```{r fig.height=4.5, fig.width=10}
+```{r, fig.width=12}
 individualCOPFigures(GRF.data, "Quiet Stand")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=4} 
+summarySwarm(reliability_validity, "Quiet Stand") 
+```
+
 ### Centre of pressure validity: agreement between force plates
-```{r fig.height=4.5, fig.width=5}
+```{r, fig.height=3, fig.width=8}
 blandAltmanCOPFigures(discrete.data,"Quiet Stand", 'mean')
 ```
 
@@ -1237,37 +1283,41 @@ metricTable(reliability_validity, "Quiet Stand")
 Single Leg Range of Stability
 =====================================
 
-Row {data-height=250}
+Row {data-height=300}
 -------------------------------------
-```{r echo=FALSE, fig.width=3.5}
+### Task
+```{r echo=FALSE, fig.width=3.9}
 knitr::include_graphics("images/single_leg_range_of_stability.png")
 ```
 
 ### Reliability (repeatability between-days)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryReliabiltyBar(reliability_validity, "Single Leg Range of Stability")
 ```
 
 ### Validity (agreement with lab force plates)
-```{r, fig.height=3.5}
+```{r,  fig.height=3, fig.width=5}
 summaryValidityBar(reliability_validity, "Single Leg Range of Stability")
-```
-
-### Reliability compared to lab forceplate 
-```{r, fig.height=3.5} 
-summarySwarm(reliability_validity, "Single Leg Range of Stability") 
 ```
 
 Row {data-height=500}
 -------------------------------------
 
 ### Centre of pressure Validity: comparison between force plates
-```{r fig.height=4.5, fig.width=10}
+```{r, fig.width=12}
 individualCOPFigures(GRF.data, "Single Leg Range of Stability")
 ```
 
+Row {data-height=300}
+-------------------------------------
+
+### Reliability compared to lab forceplate 
+```{r, fig.height=3, fig.width=4} 
+summarySwarm(reliability_validity, "Single Leg Range of Stability") 
+```
+
 ### Centre of pressure validity: agreement between force plates
-```{r fig.height=4.5, fig.width=5}
+```{r fig.height=3, fig.width=8}
 blandAltmanCOPFigures(discrete.data,"Single Leg Range of Stability", 'mean')
 ```
 
